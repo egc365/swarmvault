@@ -1,0 +1,286 @@
+# Sprint 1 Hybrid Retrieval Tuning
+
+## 1. Corpus
+- corpus name: microsoft/vscode-docs docs-only 200-page subset
+- source repo/path: https://github.com/microsoft/vscode-docs.git, docs/ subset copied to C:/dev/lib/benchmarks/vscode-docs-200
+- source commit: f86709357e9e9b66983fcc38a75ed3e00efb30fe
+- number of markdown pages used: 200
+- ingest/compile commands:
+  - git clone https://github.com/microsoft/vscode-docs.git C:\dev\lib\benchmarks\vscode-docs
+  - copy first 200 markdown/MDX files from C:\dev\lib\benchmarks\vscode-docs\docs to C:\dev\lib\benchmarks\vscode-docs-200
+  - node C:\dev\lib\swarmvault-build\packages\cli\dist\index.js init (cwd C:\dev\lib\benchmarks\sv-sprint-1-vault)
+  - node C:\dev\lib\swarmvault-build\packages\cli\dist\index.js ingest C:\dev\lib\benchmarks\vscode-docs-200 --no-guide --max-files 200
+  - node C:\dev\lib\swarmvault-build\packages\cli\dist\index.js compile
+- compile result: Compiled 200 source(s), 1064 page(s). Changed: 1074.
+- commit/tag: #2026-05-13-1847-eleven
+
+## 2. Baseline Raw Results (retrieval.rerank=false)
+
+- q01 (factual) How do you disable telemetry in Visual Studio Code?
+  - latency_ms: 172
+  - total_results_returned_limit_50: 50
+  - top5_page_ids: source:telemetry-6df665be, source:manage-telemetry-in-enterprise-environments-b62f9a70, source:frequently-asked-questions-50efe507, source:set-up-github-copilot-in-vs-code-1600a5dd, source:set-up-visual-studio-code-with-copilot-09704a8e
+- q02 (factual) Where do you configure Settings Sync in VS Code?
+  - latency_ms: 154
+  - total_results_returned_limit_50: 50
+  - top5_page_ids: source:settings-sync-4eb230b6, source:use-prompt-files-in-vs-code-3d350780, source:use-custom-instructions-in-vs-code-db55d1e9, source:user-and-workspace-settings-da55c08b, source:extension-marketplace-57d48978
+- q03 (factual) What command line option opens VS Code at a specific line and column?
+  - latency_ms: 127
+  - total_results_returned_limit_50: 50
+  - top5_page_ids: source:command-line-interface-cli-7489368f, source:basic-editing-1226d27c, source:general-2cc2de19, source:integrate-with-external-tools-via-tasks-5727880c, source:visual-studio-code-tips-and-tricks-874a616b
+- q04 (factual) How do you change the display language in VS Code?
+  - latency_ms: 202
+  - total_results_returned_limit_50: 50
+  - top5_page_ids: source:display-language-e165f381, source:personalize-vs-code-ec1af66d, source:frequently-asked-questions-50efe507, source:ai-language-models-in-vs-code-8655fafd, source:command-line-interface-cli-7489368f
+- q05 (factual) How can you install an extension from the command line?
+  - latency_ms: 145
+  - total_results_returned_limit_50: 50
+  - top5_page_ids: source:command-line-interface-cli-7489368f, source:extension-marketplace-57d48978, source:display-language-e165f381, source:extension-runtime-security-96949012, source:using-c-and-wsl-in-vs-code-6cd001de
+- q06 (factual) Where can you edit keyboard shortcuts in VS Code?
+  - latency_ms: 150
+  - total_results_returned_limit_50: 50
+  - top5_page_ids: source:keyboard-shortcuts-for-visual-studio-code-df38cf4b, source:personalize-vs-code-ec1af66d, source:visual-studio-code-tips-and-tricks-874a616b, source:accessibility-bec430f0, source:basic-editing-1226d27c
+- q07 (factual) What is Workspace Trust in VS Code?
+  - latency_ms: 144
+  - total_results_returned_limit_50: 50
+  - top5_page_ids: source:workspace-trust-4b6957e2, source:security-097bb197, source:trust-and-safety-61d37097, source:how-copilot-understands-your-workspace-b6c76172, source:extension-runtime-security-96949012
+- q08 (factual) How do profiles help customize VS Code?
+  - latency_ms: 109
+  - total_results_returned_limit_50: 50
+  - top5_page_ids: source:data-science-in-visual-studio-code-6947c3b7, source:profiles-in-visual-studio-code-dd52c8d8, source:customize-the-container-tools-extension-007f4d02, source:user-and-workspace-settings-da55c08b, source:telemetry-6df665be
+- q09 (factual) How do you use the integrated terminal profiles?
+  - latency_ms: 129
+  - total_results_returned_limit_50: 50
+  - top5_page_ids: source:command-line-interface-cli-7489368f, source:connect-to-remote-docker-over-ssh-58fa427c, source:data-science-in-visual-studio-code-6947c3b7, source:inline-chat-08215770, source:configuring-c-debugging-9ac23d41
+- q10 (factual) How do you configure accessibility features in VS Code?
+  - latency_ms: 144
+  - total_results_returned_limit_50: 50
+  - top5_page_ids: source:accessibility-bec430f0, source:voice-support-568daf57, source:github-copilot-in-vs-code-settings-reference-7b7cbae5, source:frequently-asked-questions-50efe507, source:telemetry-6df665be
+- q11 (multi-hop) How do Settings Sync and Profiles work together when moving between machines?
+  - latency_ms: 91
+  - total_results_returned_limit_50: 50
+  - top5_page_ids: source:settings-sync-4eb230b6, source:profiles-in-visual-studio-code-dd52c8d8, source:user-and-workspace-settings-da55c08b, source:frequently-asked-questions-50efe507, source:data-science-in-visual-studio-code-6947c3b7
+- q12 (multi-hop) How can command line options and extension management automate VS Code setup?
+  - latency_ms: 145
+  - total_results_returned_limit_50: 50
+  - top5_page_ids: source:command-line-interface-cli-7489368f, source:azure-machine-learning-in-vs-code-e92723b8, source:extension-marketplace-57d48978, source:integrate-with-external-tools-via-tasks-5727880c, source:visual-studio-code-tips-and-tricks-874a616b
+- q13 (multi-hop) How do Workspace Trust and extension runtime security protect a project?
+  - latency_ms: 129
+  - total_results_returned_limit_50: 50
+  - top5_page_ids: source:extension-runtime-security-96949012, source:workspace-trust-4b6957e2, source:security-097bb197, source:use-extensions-in-visual-studio-code-b2ae046b, source:trust-and-safety-61d37097
+- q14 (multi-hop) How do keybindings and command customization affect editing workflows?
+  - latency_ms: 105
+  - total_results_returned_limit_50: 50
+  - top5_page_ids: source:keyboard-shortcuts-for-visual-studio-code-df38cf4b, source:customize-ai-in-visual-studio-code-903b2274, source:custom-agents-in-vs-code-a1948d31, source:basic-editing-1226d27c, source:use-agent-skills-in-vs-code-518fd241
+- q15 (multi-hop) How do accessibility settings and voice controls improve navigation?
+  - latency_ms: 110
+  - total_results_returned_limit_50: 50
+  - top5_page_ids: source:accessibility-bec430f0, source:voice-support-568daf57, source:github-copilot-in-vs-code-settings-reference-7b7cbae5, source:manage-telemetry-in-enterprise-environments-b62f9a70, source:user-interface-9bad14c5
+- q16 (multi-hop) How do custom layouts and profiles change the workbench experience?
+  - latency_ms: 175
+  - total_results_returned_limit_50: 50
+  - top5_page_ids: source:user-interface-9bad14c5, source:data-science-in-visual-studio-code-6947c3b7, source:keyboard-shortcuts-for-visual-studio-code-df38cf4b, source:custom-layout-3ea6201e, source:profiles-in-visual-studio-code-dd52c8d8
+- q17 (multi-hop) How do terminal profiles and shell integration improve command line workflows?
+  - latency_ms: 136
+  - total_results_returned_limit_50: 50
+  - top5_page_ids: source:accessibility-bec430f0, source:command-line-interface-cli-7489368f, source:integrate-with-external-tools-via-tasks-5727880c, source:connect-to-remote-docker-over-ssh-58fa427c, source:use-tools-with-agents-c7041549
+- q18 (multi-hop) How do remote tunnels and VS Code for the Web support development away from your desktop?
+  - latency_ms: 350
+  - total_results_returned_limit_50: 50
+  - top5_page_ids: source:jupyter-notebooks-on-the-web-f1601eef, source:port-forwarding-7e7e2d69, source:dev-containers-faq-37d63b7a, source:command-line-interface-cli-7489368f, source:azure-machine-learning-in-vs-code-e92723b8
+- q19 (multi-hop) How do Azure deployment docs connect containers and Kubernetes workflows?
+  - latency_ms: 158
+  - total_results_returned_limit_50: 50
+  - top5_page_ids: source:dev-containers-faq-37d63b7a, source:working-with-kubernetes-in-vs-code-46e850b2, source:aks-tools-and-diagnostics-in-vs-code-fee2f0dd, source:deploy-a-containerized-app-to-azure-2edb38a2, source:azure-extensions-803b476e
+- q20 (multi-hop) How do editing features and IntelliSense help TypeScript development?
+  - latency_ms: 131
+  - total_results_returned_limit_50: 50
+  - top5_page_ids: source:intellisense-c7bdb2a5, source:configure-c-c-intellisense-00915802, source:frequently-asked-questions-50efe507, source:developing-inside-a-container-a2a6eb5e, source:user-and-workspace-settings-da55c08b
+- q21 (negation) Which VS Code settings should not be synced across machines?
+  - latency_ms: 144
+  - total_results_returned_limit_50: 50
+  - top5_page_ids: source:settings-sync-4eb230b6, source:vs-code-for-enterprise-46ccd63c, source:extension-marketplace-57d48978, source:telemetry-6df665be, source:user-and-workspace-settings-da55c08b
+- q22 (negation) What does Workspace Trust restrict when a folder is not trusted?
+  - latency_ms: 115
+  - total_results_returned_limit_50: 50
+  - top5_page_ids: source:workspace-trust-4b6957e2, source:security-097bb197, source:extension-runtime-security-96949012, source:add-and-manage-mcp-servers-in-vs-code-c63252a6, source:trust-and-safety-61d37097
+- q23 (negation) How do you prevent extensions from running in an untrusted workspace?
+  - latency_ms: 136
+  - total_results_returned_limit_50: 50
+  - top5_page_ids: source:workspace-trust-4b6957e2, source:security-097bb197, source:extension-runtime-security-96949012, source:use-tools-with-agents-c7041549, source:github-copilot-frequently-asked-questions-602f694a
+- q24 (negation) How do you open VS Code without restoring the previous session?
+  - latency_ms: 216
+  - total_results_returned_limit_50: 50
+  - top5_page_ids: source:revert-changes-with-checkpoints-and-editing-requests-dc257fa5, source:command-line-interface-cli-7489368f, source:manage-chat-sessions-1b8c7faf, source:what-is-a-vs-code-workspace-526e2f7f, source:use-the-agents-window-preview-caeedaaf
+- q25 (negation) How do you disable an extension instead of uninstalling it?
+  - latency_ms: 102
+  - total_results_returned_limit_50: 50
+  - top5_page_ids: source:use-extensions-in-visual-studio-code-b2ae046b, source:frequently-asked-questions-50efe507, source:command-line-interface-cli-7489368f, source:telemetry-6df665be, source:prompt-engineering-in-vs-code-3363987f
+- q26 (negation) How do you avoid sending telemetry while using VS Code?
+  - latency_ms: 146
+  - total_results_returned_limit_50: 50
+  - top5_page_ids: source:telemetry-6df665be, source:manage-telemetry-in-enterprise-environments-b62f9a70, source:refactoring-2a27f3ee, source:create-a-dev-container-0d55a3ea, source:frequently-asked-questions-50efe507
+- q27 (negation) How do you prevent automatic extension updates?
+  - latency_ms: 128
+  - total_results_returned_limit_50: 50
+  - top5_page_ids: source:manage-updates-in-enterprise-environments-62e2331a, source:portable-mode-f58dee61, source:vs-code-for-enterprise-46ccd63c, source:use-extensions-in-visual-studio-code-b2ae046b, source:workspace-trust-4b6957e2
+- q28 (negation) How do you exclude files from search results?
+  - latency_ms: 118
+  - total_results_returned_limit_50: 50
+  - top5_page_ids: source:basic-editing-1226d27c, source:glob-patterns-reference-c612409c, source:how-copilot-understands-your-workspace-b6c76172, source:multi-root-workspaces-586c3732, source:prompt-examples-5a851511
+- q29 (negation) How do you keep a profile from changing the default settings?
+  - latency_ms: 148
+  - total_results_returned_limit_50: 50
+  - top5_page_ids: source:profiles-in-visual-studio-code-dd52c8d8, source:command-line-interface-cli-7489368f, source:data-science-in-visual-studio-code-6947c3b7, source:basic-editing-1226d27c, source:user-and-workspace-settings-da55c08b
+- q30 (negation) How can you run VS Code without extensions for troubleshooting?
+  - latency_ms: 170
+  - total_results_returned_limit_50: 50
+  - top5_page_ids: source:dev-containers-faq-37d63b7a, source:troubleshoot-ai-in-visual-studio-code-258ca18f, source:github-copilot-frequently-asked-questions-602f694a, source:developing-inside-a-container-a2a6eb5e, source:workspace-trust-4b6957e2
+
+## 3. Rerank Raw Results (retrieval.rerank=true)
+
+- q01 (factual) How do you disable telemetry in Visual Studio Code?
+  - latency_ms: 210
+  - total_results_returned_limit_50: 50
+  - top5_page_ids: source:telemetry-6df665be, source:manage-telemetry-in-enterprise-environments-b62f9a70, source:frequently-asked-questions-50efe507, source:set-up-github-copilot-in-vs-code-1600a5dd, source:set-up-visual-studio-code-with-copilot-09704a8e
+- q02 (factual) Where do you configure Settings Sync in VS Code?
+  - latency_ms: 171
+  - total_results_returned_limit_50: 50
+  - top5_page_ids: source:settings-sync-4eb230b6, source:use-prompt-files-in-vs-code-3d350780, source:use-custom-instructions-in-vs-code-db55d1e9, source:user-and-workspace-settings-da55c08b, source:extension-marketplace-57d48978
+- q03 (factual) What command line option opens VS Code at a specific line and column?
+  - latency_ms: 137
+  - total_results_returned_limit_50: 50
+  - top5_page_ids: source:command-line-interface-cli-7489368f, source:basic-editing-1226d27c, source:general-2cc2de19, source:integrate-with-external-tools-via-tasks-5727880c, source:visual-studio-code-tips-and-tricks-874a616b
+- q04 (factual) How do you change the display language in VS Code?
+  - latency_ms: 255
+  - total_results_returned_limit_50: 50
+  - top5_page_ids: source:display-language-e165f381, source:personalize-vs-code-ec1af66d, source:frequently-asked-questions-50efe507, source:ai-language-models-in-vs-code-8655fafd, source:command-line-interface-cli-7489368f
+- q05 (factual) How can you install an extension from the command line?
+  - latency_ms: 167
+  - total_results_returned_limit_50: 50
+  - top5_page_ids: source:command-line-interface-cli-7489368f, source:extension-marketplace-57d48978, source:display-language-e165f381, source:extension-runtime-security-96949012, source:using-c-and-wsl-in-vs-code-6cd001de
+- q06 (factual) Where can you edit keyboard shortcuts in VS Code?
+  - latency_ms: 176
+  - total_results_returned_limit_50: 50
+  - top5_page_ids: source:keyboard-shortcuts-for-visual-studio-code-df38cf4b, source:personalize-vs-code-ec1af66d, source:visual-studio-code-tips-and-tricks-874a616b, source:accessibility-bec430f0, source:basic-editing-1226d27c
+- q07 (factual) What is Workspace Trust in VS Code?
+  - latency_ms: 187
+  - total_results_returned_limit_50: 50
+  - top5_page_ids: source:workspace-trust-4b6957e2, source:security-097bb197, source:trust-and-safety-61d37097, source:how-copilot-understands-your-workspace-b6c76172, source:extension-runtime-security-96949012
+- q08 (factual) How do profiles help customize VS Code?
+  - latency_ms: 129
+  - total_results_returned_limit_50: 50
+  - top5_page_ids: source:data-science-in-visual-studio-code-6947c3b7, source:profiles-in-visual-studio-code-dd52c8d8, source:customize-the-container-tools-extension-007f4d02, source:user-and-workspace-settings-da55c08b, source:telemetry-6df665be
+- q09 (factual) How do you use the integrated terminal profiles?
+  - latency_ms: 144
+  - total_results_returned_limit_50: 50
+  - top5_page_ids: source:command-line-interface-cli-7489368f, source:connect-to-remote-docker-over-ssh-58fa427c, source:data-science-in-visual-studio-code-6947c3b7, source:inline-chat-08215770, source:configuring-c-debugging-9ac23d41
+- q10 (factual) How do you configure accessibility features in VS Code?
+  - latency_ms: 156
+  - total_results_returned_limit_50: 50
+  - top5_page_ids: source:accessibility-bec430f0, source:voice-support-568daf57, source:github-copilot-in-vs-code-settings-reference-7b7cbae5, source:frequently-asked-questions-50efe507, source:telemetry-6df665be
+- q11 (multi-hop) How do Settings Sync and Profiles work together when moving between machines?
+  - latency_ms: 94
+  - total_results_returned_limit_50: 50
+  - top5_page_ids: source:settings-sync-4eb230b6, source:profiles-in-visual-studio-code-dd52c8d8, source:user-and-workspace-settings-da55c08b, source:frequently-asked-questions-50efe507, source:data-science-in-visual-studio-code-6947c3b7
+- q12 (multi-hop) How can command line options and extension management automate VS Code setup?
+  - latency_ms: 144
+  - total_results_returned_limit_50: 50
+  - top5_page_ids: source:command-line-interface-cli-7489368f, source:azure-machine-learning-in-vs-code-e92723b8, source:extension-marketplace-57d48978, source:integrate-with-external-tools-via-tasks-5727880c, source:visual-studio-code-tips-and-tricks-874a616b
+- q13 (multi-hop) How do Workspace Trust and extension runtime security protect a project?
+  - latency_ms: 97
+  - total_results_returned_limit_50: 50
+  - top5_page_ids: source:extension-runtime-security-96949012, source:workspace-trust-4b6957e2, source:security-097bb197, source:use-extensions-in-visual-studio-code-b2ae046b, source:trust-and-safety-61d37097
+- q14 (multi-hop) How do keybindings and command customization affect editing workflows?
+  - latency_ms: 88
+  - total_results_returned_limit_50: 50
+  - top5_page_ids: source:keyboard-shortcuts-for-visual-studio-code-df38cf4b, source:customize-ai-in-visual-studio-code-903b2274, source:custom-agents-in-vs-code-a1948d31, source:basic-editing-1226d27c, source:use-agent-skills-in-vs-code-518fd241
+- q15 (multi-hop) How do accessibility settings and voice controls improve navigation?
+  - latency_ms: 91
+  - total_results_returned_limit_50: 50
+  - top5_page_ids: source:accessibility-bec430f0, source:voice-support-568daf57, source:github-copilot-in-vs-code-settings-reference-7b7cbae5, source:manage-telemetry-in-enterprise-environments-b62f9a70, source:user-interface-9bad14c5
+- q16 (multi-hop) How do custom layouts and profiles change the workbench experience?
+  - latency_ms: 127
+  - total_results_returned_limit_50: 50
+  - top5_page_ids: source:user-interface-9bad14c5, source:data-science-in-visual-studio-code-6947c3b7, source:keyboard-shortcuts-for-visual-studio-code-df38cf4b, source:custom-layout-3ea6201e, source:profiles-in-visual-studio-code-dd52c8d8
+- q17 (multi-hop) How do terminal profiles and shell integration improve command line workflows?
+  - latency_ms: 89
+  - total_results_returned_limit_50: 50
+  - top5_page_ids: source:accessibility-bec430f0, source:command-line-interface-cli-7489368f, source:integrate-with-external-tools-via-tasks-5727880c, source:connect-to-remote-docker-over-ssh-58fa427c, source:use-tools-with-agents-c7041549
+- q18 (multi-hop) How do remote tunnels and VS Code for the Web support development away from your desktop?
+  - latency_ms: 213
+  - total_results_returned_limit_50: 50
+  - top5_page_ids: source:jupyter-notebooks-on-the-web-f1601eef, source:port-forwarding-7e7e2d69, source:dev-containers-faq-37d63b7a, source:command-line-interface-cli-7489368f, source:azure-machine-learning-in-vs-code-e92723b8
+- q19 (multi-hop) How do Azure deployment docs connect containers and Kubernetes workflows?
+  - latency_ms: 92
+  - total_results_returned_limit_50: 50
+  - top5_page_ids: source:dev-containers-faq-37d63b7a, source:working-with-kubernetes-in-vs-code-46e850b2, source:aks-tools-and-diagnostics-in-vs-code-fee2f0dd, source:deploy-a-containerized-app-to-azure-2edb38a2, source:azure-extensions-803b476e
+- q20 (multi-hop) How do editing features and IntelliSense help TypeScript development?
+  - latency_ms: 92
+  - total_results_returned_limit_50: 50
+  - top5_page_ids: source:intellisense-c7bdb2a5, source:configure-c-c-intellisense-00915802, source:frequently-asked-questions-50efe507, source:developing-inside-a-container-a2a6eb5e, source:user-and-workspace-settings-da55c08b
+- q21 (negation) Which VS Code settings should not be synced across machines?
+  - latency_ms: 103
+  - total_results_returned_limit_50: 50
+  - top5_page_ids: source:settings-sync-4eb230b6, source:vs-code-for-enterprise-46ccd63c, source:extension-marketplace-57d48978, source:telemetry-6df665be, source:user-and-workspace-settings-da55c08b
+- q22 (negation) What does Workspace Trust restrict when a folder is not trusted?
+  - latency_ms: 95
+  - total_results_returned_limit_50: 50
+  - top5_page_ids: source:workspace-trust-4b6957e2, source:security-097bb197, source:extension-runtime-security-96949012, source:add-and-manage-mcp-servers-in-vs-code-c63252a6, source:trust-and-safety-61d37097
+- q23 (negation) How do you prevent extensions from running in an untrusted workspace?
+  - latency_ms: 113
+  - total_results_returned_limit_50: 50
+  - top5_page_ids: source:workspace-trust-4b6957e2, source:security-097bb197, source:extension-runtime-security-96949012, source:use-tools-with-agents-c7041549, source:github-copilot-frequently-asked-questions-602f694a
+- q24 (negation) How do you open VS Code without restoring the previous session?
+  - latency_ms: 158
+  - total_results_returned_limit_50: 50
+  - top5_page_ids: source:revert-changes-with-checkpoints-and-editing-requests-dc257fa5, source:command-line-interface-cli-7489368f, source:manage-chat-sessions-1b8c7faf, source:what-is-a-vs-code-workspace-526e2f7f, source:use-the-agents-window-preview-caeedaaf
+- q25 (negation) How do you disable an extension instead of uninstalling it?
+  - latency_ms: 99
+  - total_results_returned_limit_50: 50
+  - top5_page_ids: source:use-extensions-in-visual-studio-code-b2ae046b, source:frequently-asked-questions-50efe507, source:command-line-interface-cli-7489368f, source:telemetry-6df665be, source:prompt-engineering-in-vs-code-3363987f
+- q26 (negation) How do you avoid sending telemetry while using VS Code?
+  - latency_ms: 115
+  - total_results_returned_limit_50: 50
+  - top5_page_ids: source:telemetry-6df665be, source:manage-telemetry-in-enterprise-environments-b62f9a70, source:refactoring-2a27f3ee, source:create-a-dev-container-0d55a3ea, source:frequently-asked-questions-50efe507
+- q27 (negation) How do you prevent automatic extension updates?
+  - latency_ms: 84
+  - total_results_returned_limit_50: 50
+  - top5_page_ids: source:manage-updates-in-enterprise-environments-62e2331a, source:portable-mode-f58dee61, source:vs-code-for-enterprise-46ccd63c, source:use-extensions-in-visual-studio-code-b2ae046b, source:workspace-trust-4b6957e2
+- q28 (negation) How do you exclude files from search results?
+  - latency_ms: 82
+  - total_results_returned_limit_50: 50
+  - top5_page_ids: source:basic-editing-1226d27c, source:glob-patterns-reference-c612409c, source:how-copilot-understands-your-workspace-b6c76172, source:multi-root-workspaces-586c3732, source:prompt-examples-5a851511
+- q29 (negation) How do you keep a profile from changing the default settings?
+  - latency_ms: 125
+  - total_results_returned_limit_50: 50
+  - top5_page_ids: source:profiles-in-visual-studio-code-dd52c8d8, source:command-line-interface-cli-7489368f, source:data-science-in-visual-studio-code-6947c3b7, source:basic-editing-1226d27c, source:user-and-workspace-settings-da55c08b
+- q30 (negation) How can you run VS Code without extensions for troubleshooting?
+  - latency_ms: 147
+  - total_results_returned_limit_50: 50
+  - top5_page_ids: source:dev-containers-faq-37d63b7a, source:troubleshoot-ai-in-visual-studio-code-258ca18f, source:github-copilot-frequently-asked-questions-602f694a, source:developing-inside-a-container-a2a6eb5e, source:workspace-trust-4b6957e2
+
+## 4. Comparison And Decision
+
+- rerank provider check: benchmark config uses local heuristic queryProvider; no paid/API provider required or configured.
+- hand-labeled queries: 10
+  - q01: source:telemetry-6df665be
+  - q02: source:settings-sync-4eb230b6
+  - q03: source:command-line-interface-cli-7489368f
+  - q04: source:display-language-e165f381
+  - q05: source:command-line-interface-cli-7489368f
+  - q06: source:keyboard-shortcuts-for-visual-studio-code-df38cf4b
+  - q07: source:workspace-trust-4b6957e2
+  - q08: source:profiles-in-visual-studio-code-dd52c8d8
+  - q10: source:accessibility-bec430f0
+  - q11: source:settings-sync-4eb230b6
+- baseline top-1 precision: 90.0% (9/10)
+- rerank top-1 precision: 90.0% (9/10)
+- precision uplift: 0.0 percentage points
+- average baseline latency: 147.6 ms
+- average rerank latency: 132.7 ms
+- latency multiplier: 0.90x
+- max baseline latency: 350 ms
+- max rerank latency: 255 ms
+- rerank hurt by demoting correct top-1: none
+- decision rationale: Keep rerank off because measured uplift was 0.0pp (<5pp); propose a real local cross-encoder reranker before enabling rerank-on by default.
