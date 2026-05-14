@@ -2,6 +2,7 @@
 
 export { installAgent, installConfiguredAgents } from "./agents.js";
 export { exportAiPack } from "./ai-export.js";
+export { appendReceiptChain, showReceiptChain, signWriteReceipt, verifyReceipt, verifyReceiptChain } from "./audit-chain.js";
 export { autoCommitWikiChanges } from "./auto-commit.js";
 export { DEFAULT_PROMOTION_CONFIG, evaluateCandidateForPromotion } from "./candidate-promotion.js";
 export { askChatSession, deleteChatSession, listChatSessions, readChatSession } from "./chat.js";
@@ -36,6 +37,13 @@ export {
   resolveDecayConfig,
   runDecayPass
 } from "./freshness.js";
+export type { ContradictionPair, SupersessionCandidate } from "./graph-deterministic.js";
+export {
+  detectContradictions,
+  findSupersessionCandidates,
+  loadGraphIntoStore,
+  walkSupersessionChain
+} from "./graph-deterministic.js";
 export type { SynthesizedHubEdge, SynthesizedHubNode, SynthesizedHyperedgeHubs } from "./graph-export.js";
 export {
   exportGraphFormat,
@@ -92,7 +100,6 @@ export {
 export type { ResolvedLargeRepoDefaults } from "./large-repo-defaults.js";
 export { LARGE_REPO_NODE_THRESHOLD, resolveLargeRepoDefaults } from "./large-repo-defaults.js";
 export { SwarmVaultLockError, withReadLock, withWriteLock } from "./locks.js";
-export { appendReceiptChain, showReceiptChain, signWriteReceipt, verifyReceipt, verifyReceiptChain } from "./audit-chain.js";
 export { createMcpServer, startMcpServer } from "./mcp.js";
 export {
   buildMemoryGraphElements,
