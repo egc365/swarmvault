@@ -92,6 +92,7 @@ export {
 export type { ResolvedLargeRepoDefaults } from "./large-repo-defaults.js";
 export { LARGE_REPO_NODE_THRESHOLD, resolveLargeRepoDefaults } from "./large-repo-defaults.js";
 export { SwarmVaultLockError, withReadLock, withWriteLock } from "./locks.js";
+export { appendReceiptChain, showReceiptChain, signWriteReceipt, verifyReceipt, verifyReceiptChain } from "./audit-chain.js";
 export { createMcpServer, startMcpServer } from "./mcp.js";
 export {
   buildMemoryGraphElements,

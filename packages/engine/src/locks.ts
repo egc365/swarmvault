@@ -96,7 +96,10 @@ export async function withWriteLock<T>(filePath: string, fn: () => Promise<T>): 
   }
 
   try {
-    return await fn();
+    const result = await fn();
+    const { recordStateWrite } = await import("./audit-chain.js");
+    await recordStateWrite(resolved);
+    return result;
   } finally {
     await fs.rm(path.join(lockPath, "holder.json"), { force: true }).catch(() => undefined);
     await release();

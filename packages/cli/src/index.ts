@@ -106,6 +106,7 @@ import {
   runSchedule,
   runWatchCycle,
   serveSchedules,
+  showReceiptChain,
   startGraphServer,
   startMcpServer,
   startMemoryTask,
@@ -113,6 +114,7 @@ import {
   uninstallGitHooks,
   updateMemoryTask,
   validateGraphVault,
+  verifyReceiptChain,
   watchVault
 } from "@swarmvaultai/engine";
 import { Command, Option } from "commander";
@@ -2717,6 +2719,20 @@ review
       log(`Rejected ${result.updatedEntries.length} entr${result.updatedEntries.length === 1 ? "y" : "ies"} from ${approvalId}.`);
     }
   });
+
+const audit = program.command("audit").description("Inspect the cryptographic audit receipt chain.");
+audit.command("verify").description("Re-verify every entry in state/audit/chain.jsonl.").action(async () => {
+  const result = await verifyReceiptChain(process.cwd());
+  if (isJson()) return emitJson(result);
+  log(result.valid ? `Audit chain valid (${result.total} entries).` : `Audit chain invalid (${result.failures.length}/${result.total} failed).`);
+  for (const failure of result.failures) log(`- ${failure}`);
+});
+audit.command("show").argument("<pageId>", "Page or bundle id, for example state/graph.json.").description("Print the audit chain entries for one page.").action(async (pageId: string) => {
+  const receipts = await showReceiptChain(process.cwd(), pageId);
+  if (isJson()) return emitJson(receipts);
+  if (!receipts.length) return log(`No audit receipts for ${pageId}.`);
+  for (const receipt of receipts) log(`${receipt.payload.timestamp} ${receipt.payload.agentKey} ${receipt.payload.pageId} ${receipt.payload.contentHash} ${receipt.hash}`);
+});
 
 const candidate = program.command("candidate").description("Candidate page workflows.");
 candidate
