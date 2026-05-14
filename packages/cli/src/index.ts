@@ -8,6 +8,7 @@ import type {
   AgentMemoryResumeFormat,
   AgentMemoryTaskStatus,
   ContextPackFormat,
+  ContradictionPair,
   GraphArtifact,
   GraphQueryFilters,
   GuidedSourceSessionQuestion,
@@ -34,6 +35,7 @@ import {
   deleteChatSession,
   deleteContextPack,
   deleteManagedSource,
+  detectContradictions,
   doctorRetrieval,
   doctorVault,
   downloadWhisperModel,
@@ -46,6 +48,7 @@ import {
   exportGraphTree,
   exportObsidianCanvas,
   exportObsidianVault,
+  findSupersessionCandidates,
   finishMemoryTask,
   getGitHookStatus,
   getGraphStatus,
@@ -72,6 +75,7 @@ import {
   listMemoryTasks,
   listSchedules,
   listWatchedRoots,
+  loadGraphIntoStore,
   loadVaultConfig,
   mergeGraphFiles,
   pathGraphVault,
@@ -117,6 +121,7 @@ import {
   updateMemoryTask,
   validateGraphVault,
   verifyReceiptChain,
+  walkSupersessionChain,
   watchVault
 } from "@swarmvaultai/engine";
 import { Command, Option } from "commander";
@@ -2617,6 +2622,100 @@ graph
       return;
     }
     log(`Superseded ${result.oldPageId} by ${result.newPageId} (edge ${result.edgeId}).`);
+  });
+
+async function loadDeterministicGraph(rootDir: string): Promise<{ graph: GraphArtifact; store: ReturnType<typeof loadGraphIntoStore> }> {
+  const { paths } = await loadVaultConfig(rootDir);
+  const graph = JSON.parse(await readFile(paths.graphPath, "utf8")) as GraphArtifact;
+  return { graph, store: loadGraphIntoStore(graph) };
+}
+
+async function stageContradictionBundle(
+  rootDir: string,
+  graph: GraphArtifact,
+  contradictions: ContradictionPair[]
+): Promise<string | undefined> {
+  const pageById = new Map(graph.pages.map((page) => [page.id, page]));
+  const entries = contradictions
+    .map((pair) => {
+      const page = pageById.get(pair.supersededId);
+      if (!page) return undefined;
+      return {
+        pageId: page.id,
+        title: page.title,
+        kind: page.kind,
+        changeType: "update" as const,
+        op: "supersede" as const,
+        status: "pending" as const,
+        sourceIds: page.sourceIds,
+        nextPath: page.supersededBy ?? pair.supersederId,
+        previousPath: page.path
+      };
+    })
+    .filter((entry): entry is NonNullable<typeof entry> => Boolean(entry));
+  if (!entries.length) return undefined;
+  const { paths } = await loadVaultConfig(rootDir);
+  const proposalDir = path.join(paths.rootDir, "state", "approval-proposals");
+  await mkdir(proposalDir, { recursive: true });
+  const approvalId = `contradiction-scan-${new Date().toISOString().replace(/[:.]/g, "-")}`;
+  const manifestPath = path.join(proposalDir, `${approvalId}.json`);
+  await writeFile(
+    manifestPath,
+    `${JSON.stringify(
+      {
+        approvalId,
+        createdAt: new Date().toISOString(),
+        bundleType: "compile",
+        title: "Contradiction scan supersession candidates",
+        entries
+      },
+      null,
+      2
+    )}\n`,
+    "utf8"
+  );
+  return (await proposeApprovalBundle(rootDir, manifestPath)).approvalId;
+}
+
+const contradiction = program.command("contradiction").description("Deterministic contradiction scans.");
+contradiction
+  .command("scan")
+  .description("Detect pages that still depend on superseded pages.")
+  .option("--auto-stage", "Stage an approval bundle with op=supersede entries", false)
+  .action(async (options: { autoStage?: boolean }) => {
+    const { graph, store } = await loadDeterministicGraph(process.cwd());
+    const contradictions = detectContradictions(store);
+    const candidates = findSupersessionCandidates(store);
+    const approvalId = options.autoStage ? await stageContradictionBundle(process.cwd(), graph, contradictions) : undefined;
+    if (isJson()) {
+      emitJson({ contradictions, candidates, approvalId });
+      return;
+    }
+    if (!contradictions.length) {
+      log("No deterministic contradictions.");
+    } else {
+      log(`Detected ${contradictions.length} deterministic contradiction(s).`);
+      for (const item of contradictions) {
+        log(`  ${item.dependentId} depends on superseded ${item.supersededId} -> ${item.supersederId}`);
+      }
+    }
+    if (approvalId) log(`Staged approval bundle ${approvalId}.`);
+  });
+
+const supersession = program.command("supersession").description("Deterministic supersession tracing.");
+supersession
+  .command("trace")
+  .description("Walk a page supersession chain in both directions.")
+  .argument("<pageId>", "Page id to trace")
+  .action(async (pageId: string) => {
+    const { store } = await loadDeterministicGraph(process.cwd());
+    const chain = walkSupersessionChain(store, pageId);
+    if (isJson()) {
+      emitJson(chain);
+      return;
+    }
+    log(`Predecessors: ${chain.predecessors.length ? chain.predecessors.join(" -> ") : "(none)"}`);
+    log(`Successors: ${chain.successors.length ? chain.successors.join(" -> ") : "(none)"}`);
   });
 
 const review = program.command("review").description("Review staged compile approval bundles.");

@@ -37,6 +37,13 @@ export {
   resolveDecayConfig,
   runDecayPass
 } from "./freshness.js";
+export type { ContradictionPair, SupersessionCandidate } from "./graph-deterministic.js";
+export {
+  detectContradictions,
+  findSupersessionCandidates,
+  loadGraphIntoStore,
+  walkSupersessionChain
+} from "./graph-deterministic.js";
 export type { SynthesizedHubEdge, SynthesizedHubNode, SynthesizedHyperedgeHubs } from "./graph-export.js";
 export {
   exportGraphFormat,
