@@ -76,6 +76,7 @@ import {
   pathGraphVault,
   previewCandidatePromotions,
   promoteCandidate,
+  promoteOutput,
   pushGraphNeo4j,
   queryGraphVault,
   queryVault,
@@ -2731,6 +2732,21 @@ candidate
       emitJson(result);
     } else {
       log(`Archived ${result.pageId}`);
+    }
+  });
+
+const output = program.command("output").description("Saved output workflows.");
+output
+  .command("promote")
+  .description("Promote a saved output into a concept page.")
+  .argument("<slug>", "Saved output slug under wiki/outputs")
+  .option("--into <concept-slug>", "Merge into an existing concept slug")
+  .action(async (slug: string, options: { into?: string }) => {
+    const result = await promoteOutput(process.cwd(), slug, { into: options.into });
+    if (isJson()) {
+      emitJson(result);
+    } else {
+      log(`${result.merged ? "Merged" : "Promoted"} ${result.outputPath} to ${result.path}`);
     }
   });
 

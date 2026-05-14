@@ -43,6 +43,7 @@ import {
   isSlackExportArchive,
   isSlackExportDirectory
 } from "./extraction.js";
+import { claimContentHash } from "./extracts.js";
 import { appendLogEntry } from "./logs.js";
 import { firstMarkdownHeading } from "./markdown-ast.js";
 import { buildConfiguredRedactor, type Redactor } from "./redaction.js";
@@ -53,6 +54,7 @@ import type {
   AddResult,
   DirectoryIngestFailure,
   DirectoryIngestResult,
+  GraphArtifact,
   GraphStatusChange,
   InboxImportResult,
   IngestOptions,
@@ -62,6 +64,7 @@ import type {
   ResolvedPaths,
   SourceAttachment,
   SourceClass,
+  SourceAnalysis,
   SourceExtractionArtifact,
   SourceManifest,
   VaultConfig,
@@ -2079,6 +2082,9 @@ async function persistPreparedInput(
   const storedPath = path.join(paths.rawSourcesDir, `${sourceId}${prepared.storedExtension}`);
   const extractedTextPath = prepared.extractedText ? path.join(paths.extractsDir, `${sourceId}.md`) : undefined;
   const extractedMetadataPath = prepared.extractionArtifact ? path.join(paths.extractsDir, `${sourceId}.json`) : undefined;
+  const extractionArtifact = prepared.extractionArtifact
+    ? enrichExtractionArtifactClaims(prepared.extractionArtifact, toPosix(path.relative(paths.rawDir, storedPath)), prepared.extractedText)
+    : undefined;
   const attachmentsDir = path.join(paths.rawAssetsDir, sourceId);
 
   if (previous?.storedPath) {
@@ -2096,8 +2102,8 @@ async function persistPreparedInput(
   if (prepared.extractedText && extractedTextPath) {
     await fs.writeFile(extractedTextPath, prepared.extractedText, "utf8");
   }
-  if (prepared.extractionArtifact && extractedMetadataPath) {
-    await writeJsonFile(extractedMetadataPath, prepared.extractionArtifact);
+  if (extractionArtifact && extractedMetadataPath) {
+    await writeJsonFile(extractedMetadataPath, extractionArtifact);
   }
 
   const manifestAttachments: SourceAttachment[] = [];
@@ -2329,6 +2335,110 @@ function graphStatusRefreshType(sourceKind: SourceManifest["sourceKind"]): Graph
   return shouldDeferWatchSemanticRefresh(sourceKind) ? "semantic" : "code";
 }
 
+function lineRangeForClaim(text: string, claimText: string, searchFromLine: number): [number, number] {
+  const lines = text.split(/\r?\n/);
+  const normalizedClaim = normalizeWhitespace(claimText).toLowerCase();
+  for (let index = Math.max(0, searchFromLine - 1); index < lines.length; index++) {
+    const normalizedLine = normalizeWhitespace(lines[index] ?? "").toLowerCase();
+    if (normalizedLine.includes(normalizedClaim) || normalizedClaim.includes(normalizedLine)) return [index + 1, index + 1];
+  }
+  return [Math.max(1, searchFromLine), Math.max(1, searchFromLine)];
+}
+
+function enrichExtractionArtifactClaims(artifact: SourceExtractionArtifact, sourceFile: string, sourceText: string | undefined): SourceExtractionArtifact {
+  if (!artifact.vision?.claims?.length) return artifact;
+  let nextLine = 1;
+  return {
+    ...artifact,
+    vision: {
+      ...artifact.vision,
+      claims: artifact.vision.claims.map((claim) => {
+        const lineRange = claim.lineRange ?? lineRangeForClaim(sourceText ?? "", claim.text, nextLine);
+        nextLine = lineRange[1] + 1;
+        return { ...claim, sourceFile: claim.sourceFile ?? sourceFile, lineRange, claimHash: claim.claimHash ?? claimContentHash({ sourceFile, lineRange, text: claim.text }) };
+      })
+    }
+  };
+}
+
+function changedLineRanges(previousText: string, currentText: string): Array<[number, number]> {
+  const previous = previousText.split(/\r?\n/);
+  const current = currentText.split(/\r?\n/);
+  const max = Math.max(previous.length, current.length);
+  const ranges: Array<[number, number]> = [];
+  let start: number | null = null;
+  let end = 0;
+  for (let index = 0; index < max; index++) {
+    if ((previous[index] ?? "") !== (current[index] ?? "")) {
+      start ??= index + 1;
+      end = index + 1;
+    } else if (start !== null) {
+      ranges.push([start, end]);
+      start = null;
+    }
+  }
+  if (start !== null) ranges.push([start, end]);
+  return ranges;
+}
+
+function rangesOverlap(left: [number, number], right: [number, number]): boolean {
+  return left[0] <= right[1] && right[0] <= left[1];
+}
+
+function normalizeStringArray(value: unknown): string[] {
+  return Array.isArray(value) ? value.filter((item): item is string => typeof item === "string" && item.length > 0) : [];
+}
+
+async function markPagesStaleByClaimHashes(paths: ResolvedPaths, sourceId: string, claimHashes: string[], now: string): Promise<string[]> {
+  if (!claimHashes.length) return [];
+  const graph = await readJsonFile<GraphArtifact>(paths.graphPath);
+  if (!graph) return [];
+  const changed = new Set(claimHashes);
+  const stalePageIds: string[] = [];
+  const nextPages = [];
+  for (const page of graph.pages) {
+    if (!page.sourceIds.includes(sourceId)) {
+      nextPages.push(page);
+      continue;
+    }
+    const absolutePagePath = path.join(paths.wikiDir, page.path);
+    const raw = await fs.readFile(absolutePagePath, "utf8").catch(() => null);
+    if (!raw) {
+      nextPages.push(page);
+      continue;
+    }
+    const parsed = matter(raw);
+    const pageClaimHashes = normalizeStringArray(parsed.data.claim_hashes);
+    if (!pageClaimHashes.some((claimHash) => changed.has(claimHash))) {
+      nextPages.push(page);
+      continue;
+    }
+    stalePageIds.push(page.id);
+    await fs.writeFile(absolutePagePath, matter.stringify(parsed.content, { ...parsed.data, freshness: "stale", updated_at: now }), "utf8");
+    nextPages.push({ ...page, freshness: "stale" as const, updatedAt: now });
+  }
+  if (stalePageIds.length) await writeJsonFile(paths.graphPath, { ...graph, generatedAt: now, pages: nextPages });
+  return stalePageIds;
+}
+
+async function claimStalenessForModifiedSource(
+  rootDir: string,
+  paths: ResolvedPaths,
+  manifest: SourceManifest,
+  currentText: string
+): Promise<Pick<GraphStatusChange, "changedLineRanges" | "changedClaimHashes" | "stalePageIds">> {
+  const previousText = await fs.readFile(path.resolve(rootDir, manifest.storedPath), "utf8").catch(() => null);
+  if (previousText === null) return {};
+  const lineRanges = changedLineRanges(previousText, currentText);
+  if (!lineRanges.length) return { changedLineRanges: [], changedClaimHashes: [], stalePageIds: [] };
+  const analysis = await readJsonFile<SourceAnalysis>(path.join(paths.analysesDir, `${manifest.sourceId}.json`));
+  const changedClaimHashes = (analysis?.claims ?? [])
+    .filter((claim) => claim.claimHash && claim.lineRange && lineRanges.some((range) => rangesOverlap(range, claim.lineRange as [number, number])))
+    .map((claim) => claim.claimHash as string);
+  const stalePageIds = await markPagesStaleByClaimHashes(paths, manifest.sourceId, changedClaimHashes, new Date().toISOString());
+  return { changedLineRanges: lineRanges, changedClaimHashes, stalePageIds };
+}
+
 export async function checkTrackedRepoChanges(rootDir: string, repoRoots?: string[]): Promise<GraphStatusChange[]> {
   const { paths } = await loadVaultConfig(rootDir);
   const normalizedOptions = await resolveRepoIngestOptions(rootDir, undefined);
@@ -2384,13 +2494,18 @@ export async function checkTrackedRepoChanges(rootDir: string, repoRoots?: strin
         continue;
       }
       const sourceKind = existing[0]?.sourceKind ?? (await inferTrackedFileSourceKind(absolutePath));
+      const claimStaleness =
+        existing.length > 0 && sourceKind !== "binary"
+          ? await claimStalenessForModifiedSource(rootDir, paths, existing[0] as SourceManifest, payloadBytes.toString("utf8")).catch(() => ({}))
+          : {};
       changes.push({
         path: toPosix(path.relative(rootDir, absolutePath)),
         repoRoot,
         changeType: existing.length > 0 ? "modified" : "added",
         sourceId: existing[0]?.sourceId,
         sourceKind,
-        refreshType: graphStatusRefreshType(sourceKind)
+        refreshType: graphStatusRefreshType(sourceKind),
+        ...claimStaleness
       });
     }
 
