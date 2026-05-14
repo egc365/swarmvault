@@ -1,5 +1,6 @@
 import path from "node:path";
 import { loadVaultConfig } from "./config.js";
+import { withWriteLock } from "./locks.js";
 import { rebuildSearchIndex } from "./search.js";
 import type { GraphArtifact, RetrievalConfig, RetrievalDoctorResult, RetrievalManifest, RetrievalStatus, VaultConfig } from "./types.js";
 import { fileExists, readJsonFile, sha256, toPosix, writeJsonFile } from "./utils.js";
@@ -47,7 +48,9 @@ export async function writeRetrievalManifest(rootDir: string, graph: GraphArtifa
       }
     ]
   };
-  await writeJsonFile(paths.retrievalManifestPath, manifest);
+  await withWriteLock(paths.retrievalManifestPath, async () => {
+    await writeJsonFile(paths.retrievalManifestPath, manifest);
+  });
   return manifest;
 }
 

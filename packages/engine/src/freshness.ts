@@ -1,6 +1,7 @@
 import fs from "node:fs/promises";
 import path from "node:path";
 import matter from "gray-matter";
+import { withWriteLock } from "./locks.js";
 import type { FreshnessConfig, GraphArtifact, GraphPage, SourceClass } from "./types.js";
 import { fileExists, readJsonFile, writeFileIfChanged, writeJsonFile } from "./utils.js";
 
@@ -306,7 +307,9 @@ export async function runDecayPass(input: {
   if (graph) {
     const byId = new Map(updated.map((page) => [page.id, page]));
     const nextGraphPages = graph.pages.map((page) => byId.get(page.id) ?? page);
-    await writeJsonFile(input.graphPath, { ...graph, pages: nextGraphPages });
+    await withWriteLock(input.graphPath, async () => {
+      await writeJsonFile(input.graphPath, { ...graph, pages: nextGraphPages });
+    });
   }
 
   return { pages: updated, updatedPaths, markedStale };
