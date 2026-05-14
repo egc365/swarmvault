@@ -5,6 +5,7 @@ import type { TableColumnAst } from "node-sql-parser";
 import ts from "typescript";
 import YAML from "yaml";
 import { analyzeTreeSitterCode } from "./code-tree-sitter.js";
+import { codeExtractSymbolKind, symbolContentHash } from "./extracts.js";
 import type {
   CodeAnalysis,
   CodeDiagnostic,
@@ -33,6 +34,8 @@ type DraftCodeSymbol = {
   extendsNames: string[];
   implementsNames: string[];
   bodyText?: string;
+  lineRange?: [number, number];
+  symbolText?: string;
 };
 
 type CodeLanguageDetectionOptions = {
@@ -240,6 +243,31 @@ function makeSymbolId(scope: string, name: string, kind: string, seen: Map<strin
   const count = (seen.get(base) ?? 0) + 1;
   seen.set(base, count);
   return `symbol:${scope}:${count === 1 ? base : `${base}-${count}`}`;
+}
+
+function manifestCodeFilePath(manifest: SourceManifest): string {
+  return toPosix(manifest.repoRelativePath ?? manifest.originalPath ?? manifest.storedPath).replace(/^raw\//, "");
+}
+
+function rangeForTsNode(node: ts.Node, sourceFile: ts.SourceFile): [number, number] {
+  const start = sourceFile.getLineAndCharacterOfPosition(node.getStart(sourceFile)).line + 1;
+  const end = sourceFile.getLineAndCharacterOfPosition(node.getEnd()).line + 1;
+  return [start, end];
+}
+
+function lineRangeForSymbol(content: string, symbol: DraftCodeSymbol, searchFromLine: number): [number, number] {
+  if (symbol.lineRange) return symbol.lineRange;
+  const lines = content.split(/\r?\n/);
+  const needle = (symbol.symbolText ?? symbol.bodyText ?? symbol.signature).trim();
+  const offset = needle ? content.indexOf(needle) : -1;
+  if (offset >= 0) {
+    const start = content.slice(0, offset).split(/\r?\n/).length;
+    return [start, start + needle.split(/\r?\n/).length - 1];
+  }
+  for (let index = Math.max(0, searchFromLine - 1); index < lines.length; index++) {
+    if ((lines[index] ?? "").includes(symbol.name)) return [index + 1, index + 1];
+  }
+  return [Math.max(1, searchFromLine), Math.max(1, searchFromLine)];
 }
 
 function summarizeModule(manifest: SourceManifest, code: CodeAnalysis): string {
@@ -473,7 +501,8 @@ function finalizeCodeAnalysis(
   draftSymbols: DraftCodeSymbol[],
   exportLabels: string[],
   diagnostics: CodeDiagnostic[],
-  metadata?: { moduleName?: string; namespace?: string }
+  metadata?: { moduleName?: string; namespace?: string },
+  content = ""
 ): CodeAnalysis {
   const topLevelNames = new Set(draftSymbols.map((symbol) => symbol.name));
   for (const symbol of draftSymbols) {
@@ -484,16 +513,27 @@ function finalizeCodeAnalysis(
 
   const seenSymbolIds = new Map<string, number>();
   const symbolScope = metadata?.namespace ? `ns:${slugify(metadata.namespace)}` : manifest.sourceId;
-  const symbols: CodeSymbol[] = draftSymbols.map((symbol) => ({
-    id: makeSymbolId(symbolScope, symbol.name, symbol.kind, seenSymbolIds),
-    name: symbol.name,
-    kind: symbol.kind,
-    signature: symbol.signature,
-    exported: symbol.exported,
-    calls: uniqueBy(symbol.callNames, (name) => name),
-    extends: uniqueBy(symbol.extendsNames.map((name) => normalizeSymbolReference(name)).filter(Boolean), (name) => name),
-    implements: uniqueBy(symbol.implementsNames.map((name) => normalizeSymbolReference(name)).filter(Boolean), (name) => name)
-  }));
+  const filePath = manifestCodeFilePath(manifest);
+  let nextSearchLine = 1;
+  const symbols: CodeSymbol[] = draftSymbols.map((symbol) => {
+    const lineRange = lineRangeForSymbol(content, symbol, nextSearchLine);
+    nextSearchLine = lineRange[1] + 1;
+    const symbolText = symbol.symbolText ?? symbol.bodyText ?? symbol.signature;
+    return {
+      id: makeSymbolId(symbolScope, symbol.name, symbol.kind, seenSymbolIds),
+      name: symbol.name,
+      kind: symbol.kind,
+      symbolKind: codeExtractSymbolKind(symbol.kind),
+      signature: symbol.signature,
+      exported: symbol.exported,
+      filePath,
+      lineRange,
+      symbolHash: symbolContentHash({ filePath, lineRange, text: symbolText }),
+      calls: uniqueBy(symbol.callNames, (name) => name),
+      extends: uniqueBy(symbol.extendsNames.map((name) => normalizeSymbolReference(name)).filter(Boolean), (name) => name),
+      implements: uniqueBy(symbol.implementsNames.map((name) => normalizeSymbolReference(name)).filter(Boolean), (name) => name)
+    };
+  });
 
   return {
     moduleId: `module:${manifest.sourceId}`,
@@ -1824,7 +1864,9 @@ function analyzeTypeScriptLikeCode(
         exported: isNodeExported(statement),
         callNames: [],
         extendsNames: heritageNames(statement.heritageClauses, ts.SyntaxKind.ExtendsKeyword),
-        implementsNames: heritageNames(statement.heritageClauses, ts.SyntaxKind.ImplementsKeyword)
+        implementsNames: heritageNames(statement.heritageClauses, ts.SyntaxKind.ImplementsKeyword),
+        lineRange: rangeForTsNode(statement, sourceFile),
+        symbolText: statement.getText(sourceFile)
       });
       if (isNodeExported(statement)) {
         localExportNames.add(statement.name.text);
@@ -1858,7 +1900,9 @@ function analyzeTypeScriptLikeCode(
         exported: isNodeExported(statement),
         callNames: [],
         extendsNames: [],
-        implementsNames: []
+        implementsNames: [],
+        lineRange: rangeForTsNode(statement, sourceFile),
+        symbolText: statement.getText(sourceFile)
       });
       if (isNodeExported(statement)) {
         localExportNames.add(statement.name.text);
@@ -1897,7 +1941,9 @@ function analyzeTypeScriptLikeCode(
           exported,
           callNames: [],
           extendsNames: [],
-          implementsNames: []
+          implementsNames: [],
+          lineRange: rangeForTsNode(statement, sourceFile),
+          symbolText: statement.getText(sourceFile)
         });
         if (exported) {
           localExportNames.add(declaration.name.text);
@@ -1960,7 +2006,7 @@ function analyzeTypeScriptLikeCode(
   });
 
   return {
-    code: finalizeCodeAnalysis(manifest, language, imports, draftSymbols, exportLabels, diagnostics),
+    code: finalizeCodeAnalysis(manifest, language, imports, draftSymbols, exportLabels, diagnostics, undefined, content),
     rationales: extractTypeScriptRationales(manifest, content, sourceFile)
   };
 }

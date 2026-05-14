@@ -209,6 +209,7 @@ export type CodeSymbolKind =
   | "trait"
   | "table"
   | "view";
+export type CodeExtractSymbolKind = "function" | "class" | "method" | "type" | "constant" | "module";
 export type OrchestrationRole = "research" | "audit" | "context" | "safety";
 
 export const webSearchProviderTypeSchema = z.enum(["http-json", "custom"]);
@@ -844,8 +845,12 @@ export interface CodeSymbol {
   id: string;
   name: string;
   kind: CodeSymbolKind;
+  symbolKind?: CodeExtractSymbolKind;
   signature: string;
   exported: boolean;
+  filePath?: string;
+  lineRange?: [number, number];
+  symbolHash?: string;
   calls: string[];
   extends: string[];
   implements: string[];
@@ -1877,6 +1882,7 @@ export interface GraphStatusChange {
   refreshType: "code" | "semantic";
   changedLineRanges?: Array<[number, number]>;
   changedClaimHashes?: string[];
+  changedSymbolHashes?: string[];
   stalePageIds?: string[];
 }
 

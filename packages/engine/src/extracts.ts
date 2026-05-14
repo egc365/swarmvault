@@ -1,4 +1,4 @@
-import type { SourceAnalysis, SourceClaim, SourceManifest } from "./types.js";
+import type { CodeExtractSymbolKind, CodeSymbolKind, SourceAnalysis, SourceClaim, SourceManifest } from "./types.js";
 import { normalizeWhitespace, sha256, toPosix } from "./utils.js";
 
 export function normalizeClaimText(text: string): string {
@@ -7,6 +7,35 @@ export function normalizeClaimText(text: string): string {
 
 export function claimContentHash(input: { sourceFile: string; lineRange: [number, number]; text: string }): string {
   return sha256(`${input.sourceFile}:${input.lineRange[0]}-${input.lineRange[1]}:${normalizeClaimText(input.text)}`);
+}
+
+export function normalizeSymbolText(text: string): string {
+  return normalizeWhitespace(text).toLowerCase();
+}
+
+export function codeExtractSymbolKind(kind: CodeSymbolKind): CodeExtractSymbolKind {
+  switch (kind) {
+    case "function":
+      return "function";
+    case "class":
+      return "class";
+    case "interface":
+    case "type_alias":
+    case "enum":
+    case "struct":
+    case "trait":
+      return "type";
+    case "table":
+    case "view":
+    case "variable":
+      return "constant";
+    default:
+      return "module";
+  }
+}
+
+export function symbolContentHash(input: { filePath: string; lineRange: [number, number]; text: string }): string {
+  return sha256(`${input.filePath}:${input.lineRange[0]}-${input.lineRange[1]}:${normalizeSymbolText(input.text)}`);
 }
 
 function sourceFileForClaim(manifest: SourceManifest): string {

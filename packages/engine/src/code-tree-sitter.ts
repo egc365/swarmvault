@@ -13,6 +13,7 @@ import type {
   SourceManifest,
   SourceRationale
 } from "./types.js";
+import { codeExtractSymbolKind, symbolContentHash } from "./extracts.js";
 import { normalizeWhitespace, slugify, toPosix, truncate, uniqueBy } from "./utils.js";
 
 const require = createRequire(import.meta.url);
@@ -37,6 +38,8 @@ type DraftCodeSymbol = {
   extendsNames: string[];
   implementsNames: string[];
   bodyText?: string;
+  lineRange?: [number, number];
+  symbolText?: string;
 };
 
 type GoReceiverBinding = {
@@ -56,6 +59,7 @@ type TreeNode = {
   isMissing: boolean;
   hasError: boolean;
   startPosition: TreePoint;
+  endPosition: TreePoint;
   children: Array<TreeNode | null>;
   namedChildren: Array<TreeNode | null>;
   childForFieldName(fieldName: string): TreeNode | null;
@@ -101,6 +105,7 @@ type TreeSitterModule = {
 let treeSitterModulePromise: Promise<TreeSitterModule> | undefined;
 let treeSitterInitPromise: Promise<void> | undefined;
 const languageCache = new Map<string, Promise<TreeLanguage>>();
+let activeTreeSitterContent = "";
 
 type TreeSitterGrammarAsset = {
   packageName: string;
@@ -261,6 +266,29 @@ function makeSymbolId(sourceId: string, name: string, kind: string, seen: Map<st
   return `symbol:${sourceId}:${count === 1 ? base : `${base}-${count}`}`;
 }
 
+function manifestCodeFilePath(manifest: SourceManifest): string {
+  return toPosix(manifest.repoRelativePath ?? manifest.originalPath ?? manifest.storedPath).replace(/^raw\//, "");
+}
+
+function rangeForTreeNode(node: TreeNode): [number, number] {
+  return [node.startPosition.row + 1, node.endPosition.row + 1];
+}
+
+function lineRangeForSymbol(content: string, symbol: DraftCodeSymbol, searchFromLine: number): [number, number] {
+  if (symbol.lineRange) return symbol.lineRange;
+  const needle = (symbol.symbolText ?? symbol.bodyText ?? symbol.signature).trim();
+  const offset = needle ? content.indexOf(needle) : -1;
+  if (offset >= 0) {
+    const start = content.slice(0, offset).split(/\r?\n/).length;
+    return [start, start + needle.split(/\r?\n/).length - 1];
+  }
+  const lines = content.split(/\r?\n/);
+  for (let index = Math.max(0, searchFromLine - 1); index < lines.length; index++) {
+    if ((lines[index] ?? "").includes(symbol.name)) return [index + 1, index + 1];
+  }
+  return [Math.max(1, searchFromLine), Math.max(1, searchFromLine)];
+}
+
 function escapeRegExp(value: string): string {
   return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 }
@@ -354,7 +382,8 @@ function finalizeCodeAnalysis(
   exportLabels: string[],
   diagnostics: CodeDiagnostic[],
   metadata?: { moduleName?: string; namespace?: string },
-  relations?: NonNullable<CodeAnalysis["relations"]>
+  relations?: NonNullable<CodeAnalysis["relations"]>,
+  content = activeTreeSitterContent
 ): CodeAnalysis {
   const topLevelNames = new Set(draftSymbols.map((symbol) => symbol.name));
   for (const symbol of draftSymbols) {
@@ -364,16 +393,27 @@ function finalizeCodeAnalysis(
   }
 
   const seenSymbolIds = new Map<string, number>();
-  const symbols: CodeSymbol[] = draftSymbols.map((symbol) => ({
-    id: makeSymbolId(manifest.sourceId, symbol.name, symbol.kind, seenSymbolIds),
-    name: symbol.name,
-    kind: symbol.kind,
-    signature: symbol.signature,
-    exported: symbol.exported,
-    calls: uniqueBy(symbol.callNames, (name) => name),
-    extends: uniqueBy(symbol.extendsNames.map((name) => normalizeSymbolReference(name)).filter(Boolean), (name) => name),
-    implements: uniqueBy(symbol.implementsNames.map((name) => normalizeSymbolReference(name)).filter(Boolean), (name) => name)
-  }));
+  const filePath = manifestCodeFilePath(manifest);
+  let nextSearchLine = 1;
+  const symbols: CodeSymbol[] = draftSymbols.map((symbol) => {
+    const lineRange = lineRangeForSymbol(content, symbol, nextSearchLine);
+    nextSearchLine = lineRange[1] + 1;
+    const symbolText = symbol.symbolText ?? symbol.bodyText ?? symbol.signature;
+    return {
+      id: makeSymbolId(manifest.sourceId, symbol.name, symbol.kind, seenSymbolIds),
+      name: symbol.name,
+      kind: symbol.kind,
+      symbolKind: codeExtractSymbolKind(symbol.kind),
+      signature: symbol.signature,
+      exported: symbol.exported,
+      filePath,
+      lineRange,
+      symbolHash: symbolContentHash({ filePath, lineRange, text: symbolText }),
+      calls: uniqueBy(symbol.callNames, (name) => name),
+      extends: uniqueBy(symbol.extendsNames.map((name) => normalizeSymbolReference(name)).filter(Boolean), (name) => name),
+      implements: uniqueBy(symbol.implementsNames.map((name) => normalizeSymbolReference(name)).filter(Boolean), (name) => name)
+    };
+  });
 
   return {
     moduleId: `module:${manifest.sourceId}`,
@@ -2070,7 +2110,9 @@ function pythonCodeAnalysis(manifest: SourceManifest, rootNode: TreeNode, diagno
         callNames: [],
         extendsNames: superclasses,
         implementsNames: [],
-        bodyText: nodeText(child.childForFieldName("body"))
+        bodyText: nodeText(child.childForFieldName("body")),
+        lineRange: rangeForTreeNode(child),
+        symbolText: child.text
       });
       continue;
     }
@@ -2087,7 +2129,9 @@ function pythonCodeAnalysis(manifest: SourceManifest, rootNode: TreeNode, diagno
         callNames: [],
         extendsNames: [],
         implementsNames: [],
-        bodyText: nodeText(child.childForFieldName("body"))
+        bodyText: nodeText(child.childForFieldName("body")),
+        lineRange: rangeForTreeNode(child),
+        symbolText: child.text
       });
     }
   }
@@ -4880,6 +4924,7 @@ export async function analyzeTreeSitterCode(
   code: CodeAnalysis;
   rationales: SourceRationale[];
 }> {
+  const previousActiveContent = activeTreeSitterContent;
   // The vendored Swift grammar currently triggers multi-gigabyte V8 wasm
   // compilation spikes on Node 24, which crashes local test and OSS-corpus
   // runs before any actual Swift AST walk happens. Keep Swift on the
@@ -4941,6 +4986,7 @@ export async function analyzeTreeSitterCode(
   }
 
   try {
+    activeTreeSitterContent = content;
     // tree-sitter-lua@0.1.13 leaks wasm state across parses: the first Lua source in a
     // session parses cleanly, but every subsequent Lua source inherits a poisoned parser
     // state and reports spurious "syntax error" nodes on fundamentally valid code (e.g.
@@ -5046,6 +5092,7 @@ export async function analyzeTreeSitterCode(
         };
     }
   } finally {
+    activeTreeSitterContent = previousActiveContent;
     tree.delete();
   }
 }

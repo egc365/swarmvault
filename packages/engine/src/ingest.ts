@@ -2398,11 +2398,17 @@ function normalizeStringArray(value: unknown): string[] {
   return Array.isArray(value) ? value.filter((item): item is string => typeof item === "string" && item.length > 0) : [];
 }
 
-async function markPagesStaleByClaimHashes(paths: ResolvedPaths, sourceId: string, claimHashes: string[], now: string): Promise<string[]> {
-  if (!claimHashes.length) return [];
+async function markPagesStaleByHashes(
+  paths: ResolvedPaths,
+  sourceId: string,
+  hashes: string[],
+  frontmatterKey: "claim_hashes" | "symbol_hashes",
+  now: string
+): Promise<string[]> {
+  if (!hashes.length) return [];
   const graph = await readJsonFile<GraphArtifact>(paths.graphPath);
   if (!graph) return [];
-  const changed = new Set(claimHashes);
+  const changed = new Set(hashes);
   const stalePageIds: string[] = [];
   const nextPages = [];
   for (const page of graph.pages) {
@@ -2417,8 +2423,8 @@ async function markPagesStaleByClaimHashes(paths: ResolvedPaths, sourceId: strin
       continue;
     }
     const parsed = matter(raw);
-    const pageClaimHashes = normalizeStringArray(parsed.data.claim_hashes);
-    if (!pageClaimHashes.some((claimHash) => changed.has(claimHash))) {
+    const pageHashes = normalizeStringArray(parsed.data[frontmatterKey]);
+    if (!pageHashes.some((hash) => changed.has(hash))) {
       nextPages.push(page);
       continue;
     }
@@ -2430,24 +2436,39 @@ async function markPagesStaleByClaimHashes(paths: ResolvedPaths, sourceId: strin
   return stalePageIds;
 }
 
+async function markPagesStaleByClaimHashes(paths: ResolvedPaths, sourceId: string, claimHashes: string[], now: string): Promise<string[]> {
+  return markPagesStaleByHashes(paths, sourceId, claimHashes, "claim_hashes", now);
+}
+
+async function markPagesStaleBySymbolHashes(paths: ResolvedPaths, sourceId: string, symbolHashes: string[], now: string): Promise<string[]> {
+  return markPagesStaleByHashes(paths, sourceId, symbolHashes, "symbol_hashes", now);
+}
+
 async function claimStalenessForModifiedSource(
   rootDir: string,
   paths: ResolvedPaths,
   manifest: SourceManifest,
   currentText: string
-): Promise<Pick<GraphStatusChange, "changedLineRanges" | "changedClaimHashes" | "stalePageIds">> {
+): Promise<Pick<GraphStatusChange, "changedLineRanges" | "changedClaimHashes" | "changedSymbolHashes" | "stalePageIds">> {
   const previousText = await fs.readFile(path.resolve(rootDir, manifest.storedPath), "utf8").catch(() => null);
   if (previousText === null) return {};
   const lineRanges = changedLineRanges(previousText, currentText);
-  if (!lineRanges.length) return { changedLineRanges: [], changedClaimHashes: [], stalePageIds: [] };
+  if (!lineRanges.length) return { changedLineRanges: [], changedClaimHashes: [], changedSymbolHashes: [], stalePageIds: [] };
   const analysis = await readJsonFile<SourceAnalysis>(path.join(paths.analysesDir, `${manifest.sourceId}.json`));
   const changedClaimHashes = (analysis?.claims ?? [])
     .filter(
       (claim) => claim.claimHash && claim.lineRange && lineRanges.some((range) => rangesOverlap(range, claim.lineRange as [number, number]))
     )
     .map((claim) => claim.claimHash as string);
-  const stalePageIds = await markPagesStaleByClaimHashes(paths, manifest.sourceId, changedClaimHashes, new Date().toISOString());
-  return { changedLineRanges: lineRanges, changedClaimHashes, stalePageIds };
+  const changedSymbolHashes = (analysis?.code?.symbols ?? [])
+    .filter(
+      (symbol) => symbol.symbolHash && symbol.lineRange && lineRanges.some((range) => rangesOverlap(range, symbol.lineRange as [number, number]))
+    )
+    .map((symbol) => symbol.symbolHash as string);
+  const now = new Date().toISOString();
+  const claimPageIds = await markPagesStaleByClaimHashes(paths, manifest.sourceId, changedClaimHashes, now);
+  const symbolPageIds = await markPagesStaleBySymbolHashes(paths, manifest.sourceId, changedSymbolHashes, now);
+  return { changedLineRanges: lineRanges, changedClaimHashes, changedSymbolHashes, stalePageIds: uniqueStrings([...claimPageIds, ...symbolPageIds]) };
 }
 
 export async function checkTrackedRepoChanges(rootDir: string, repoRoots?: string[]): Promise<GraphStatusChange[]> {
