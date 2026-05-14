@@ -6079,6 +6079,20 @@ export async function queryVault(rootDir: string, rawOptions: QueryOptions): Pro
       approvalDir,
       outputAssets
     };
+    // Retention access log tap: record one access entry per touched page,
+    // batched in a single lock acquisition. Awaited so test cleanup
+    // doesn't race with concurrent writes into state/retention/.
+    try {
+      const { recordPageAccessBatch } = await import("./retention.js");
+      const touched = new Set<string>([...query.relatedPageIds, ...(savedPageId ? [savedPageId] : [])]);
+      if (touched.size > 0) {
+        const queriedAt = new Date().toISOString();
+        const records = [...touched].map((pageId) => ({ pageId, queriedAt, queryId: hookSessionId }));
+        await recordPageAccessBatch(rootDir, records);
+      }
+    } catch {
+      // Access tap is best-effort; never break the query path.
+    }
     await emitHookEvent(
       rootDir,
       buildEvent(rootDir, hookSessionId, "PostQuery", {

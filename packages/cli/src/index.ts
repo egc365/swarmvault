@@ -2816,6 +2816,52 @@ candidate
     }
   });
 
+const retention = program.command("retention").description("Retention/decay scoring for vault pages.");
+retention
+  .command("scan")
+  .description("Score every page in the graph for retention and list pages below the threshold.")
+  .option("--threshold <value>", "Score threshold; pages strictly below are flagged (default 0.3)", "0.3")
+  .option("--json", "Emit structured JSON")
+  .action(async (options: { threshold?: string; json?: boolean }) => {
+    const { scanRetention } = await import("@swarmvaultai/engine");
+    const threshold = options.threshold === undefined ? undefined : Number.parseFloat(options.threshold);
+    if (threshold !== undefined && (!Number.isFinite(threshold) || threshold < 0 || threshold > 1)) {
+      throw new Error(`Invalid --threshold ${options.threshold}; expected a number in [0, 1].`);
+    }
+    const result = await scanRetention(process.cwd(), { threshold });
+    if (isJson() || options.json) {
+      emitJson(result);
+      return;
+    }
+    log(`Scanned ${result.scanned} page${result.scanned === 1 ? "" : "s"} at threshold ${result.threshold}`);
+    if (!result.candidates.length) {
+      log("No retention candidates.");
+      return;
+    }
+    log(`Candidates (${result.candidates.length}):`);
+    for (const candidate of result.candidates) {
+      log(`  ${candidate.pageId} score=${candidate.score.toFixed(3)} ${candidate.reasons.join("; ")}`);
+    }
+  });
+
+retention
+  .command("show")
+  .description("Show the retention score and reasons for a single page.")
+  .argument("<pageId>", "Page id (e.g. concept:foo, output:bar)")
+  .option("--json", "Emit structured JSON")
+  .action(async (pageId: string, options: { json?: boolean }) => {
+    const { scoreRetention } = await import("@swarmvaultai/engine");
+    const result = await scoreRetention(process.cwd(), pageId);
+    if (isJson() || options.json) {
+      emitJson(result);
+      return;
+    }
+    log(`${result.pageId} score=${result.score.toFixed(3)}`);
+    for (const reason of result.reasons) {
+      log(`  - ${reason}`);
+    }
+  });
+
 const provider = program.command("provider").description("Configure provider adapters.");
 provider
   .command("setup")

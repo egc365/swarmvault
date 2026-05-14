@@ -2699,3 +2699,31 @@ export type HookEvent =
   | (HookEventBase & { eventName: "OnOutputPromote"; payload: OnOutputPromotePayload });
 
 export type HookSink = (event: HookEvent) => void | Promise<void>;
+
+// =====================================================================
+// Retention/decay (Sprint 5).
+// =====================================================================
+//
+// retention.ts scores per-page decay-readiness using last-access,
+// incoming-edge count, source age, and a frontmatter `important: true`
+// override. Scores in [0, 1]; lower = more decay-ready. The default
+// threshold is 0.3 (anything below is a candidate for archival).
+
+export interface RetentionScore {
+  pageId: string;
+  score: number;
+  reasons: string[];
+}
+
+export interface RetentionAccessRecord {
+  pageId: string;
+  queriedAt: string;
+  queryId: string;
+}
+
+export interface RetentionScanResult {
+  generatedAt: string;
+  threshold: number;
+  scanned: number;
+  candidates: RetentionScore[];
+}

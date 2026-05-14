@@ -4,6 +4,7 @@ import { loadVaultConfig } from "./config.js";
 import { listManifests } from "./ingest.js";
 import { listMemoryTasks } from "./memory.js";
 import { planMigration } from "./migrate.js";
+import { scanRetention } from "./retention.js";
 import { doctorRetrieval } from "./retrieval.js";
 import type {
   GraphArtifact,
@@ -242,6 +243,29 @@ export async function doctorVault(rootDir: string, options: DoctorVaultOptions =
         ]
       : []
   });
+
+  const retentionCandidates = await scanRetention(rootDir).catch(() => null);
+  if (retentionCandidates) {
+    const count = retentionCandidates.candidates.length;
+    checks.push({
+      id: "retention",
+      label: "Retention",
+      status: count > 0 ? "warning" : "ok",
+      summary:
+        count > 0
+          ? `${count} page${count === 1 ? "" : "s"} below retention threshold ${retentionCandidates.threshold} (decay-ready).`
+          : "No retention candidates below threshold.",
+      actions:
+        count > 0
+          ? [
+              {
+                command: "swarmvault retention scan",
+                description: "List pages flagged for low retention."
+              }
+            ]
+          : []
+    });
+  }
 
   const migrationNeedsAttention = Boolean(migrationPlan.fromVersion && migrationPlan.steps.length);
   checks.push({

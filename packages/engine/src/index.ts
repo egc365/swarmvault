@@ -135,6 +135,14 @@ export {
 export { assertProviderCapability, createProvider, getProviderForTask } from "./providers/registry.js";
 export { buildConfiguredRedactor, buildRedactor, DEFAULT_REDACTION_PATTERNS, resolveRedactionPatterns } from "./redaction.js";
 export {
+  computeRetentionScore,
+  RETENTION_DEFAULTS,
+  recordPageAccess,
+  recordPageAccessBatch,
+  scanRetention,
+  scoreRetention
+} from "./retention.js";
+export {
   doctorRetrieval,
   getRetrievalStatus,
   rebuildRetrievalIndex,
