@@ -85,6 +85,12 @@ export {
   registerHookSink
 } from "./hooks-core.js";
 export {
+  attachHotCacheHookSink,
+  buildHotCache,
+  createHotCacheHookSink,
+  refreshHotCacheIfStale
+} from "./hot-cache.js";
+export {
   addInput,
   checkTrackedRepoChanges,
   importInbox,

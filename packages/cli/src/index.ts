@@ -27,6 +27,7 @@ import {
   blastRadiusVault,
   buildContextPack,
   buildGraphShareArtifact,
+  buildHotCache,
   compileVault,
   consolidateVault,
   createSupersessionEdge,
@@ -91,6 +92,7 @@ import {
   readMemoryTask,
   rebuildRetrievalIndex,
   refreshGraphClusters,
+  refreshHotCacheIfStale,
   registerLocalWhisperProvider,
   rejectApprovalWithHooks,
   reloadManagedSources,
@@ -3774,6 +3776,34 @@ program
       if (diff.removedEdges.length > 20) {
         log(`  ... and ${diff.removedEdges.length - 20} more`);
       }
+    }
+  });
+
+const hotCache = program.command("hot-cache").description("Inspect or refresh the vault session hot cache.");
+
+hotCache
+  .command("refresh")
+  .description("Rebuild wiki/.hot-cache.md from recent vault state.")
+  .action(async () => {
+    const result = await buildHotCache(process.cwd());
+    if (isJson()) {
+      emitJson(result);
+      return;
+    }
+    log(`Refreshed wiki/.hot-cache.md (${result.tokens} tokens, ${result.pages.length} source file(s)).`);
+  });
+
+hotCache
+  .command("show")
+  .description("Print wiki/.hot-cache.md, refreshing it if stale or missing.")
+  .action(async () => {
+    await refreshHotCacheIfStale(process.cwd());
+    const { paths } = await loadVaultConfig(process.cwd());
+    const content = await readFile(path.join(paths.wikiDir, ".hot-cache.md"), "utf8");
+    if (isJson()) {
+      emitJson({ content });
+    } else {
+      log(content.trimEnd());
     }
   });
 
