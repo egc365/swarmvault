@@ -109,6 +109,7 @@ import {
   reviewManagedSource,
   reviewSourceScope,
   runAutoPromotion,
+  scanAstDeterministic,
   runMigration,
   runSchedule,
   runWatchCycle,
@@ -2737,6 +2738,14 @@ code.command("reindex").description("Re-run code analysis and regenerate code wi
   const result = await reindexCodeWiki(process.cwd());
   if (isJson()) emitJson(result);
   else log(`Code wiki reindexed: ${result.pageCount} page(s), ${result.changedPages.length} changed.`);
+});
+code.command("scan").description("Run AST-only deterministic route/schema/export extraction with no LLM calls.").argument("<repo>", "Repository path").action(async (repo: string) => {
+  const result = await scanAstDeterministic(path.resolve(process.cwd(), repo));
+  if (isJson()) emitJson(result);
+  else {
+    log(`Frameworks: ${result.frameworks.join(", ") || "none"}`);
+    log(`Routes: ${result.routes.length}; Schemas: ${result.schemas.length}; Exports: ${result.exports.length}`);
+  }
 });
 
 const review = program.command("review").description("Review staged compile approval bundles.");

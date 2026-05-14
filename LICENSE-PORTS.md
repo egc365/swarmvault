@@ -18,3 +18,14 @@ Source files referenced: src/cortex/ontology/namespaces.py, src/cortex/pipeline/
 ## Hot-cache session context
 Source: https://github.com/AgriciDaniel/claude-obsidian (MIT, 4933★)
 Ported to: packages/engine/src/hot-cache.ts
+
+## AST-only deterministic code extraction
+Source: https://github.com/Houseofmvps/codesight (MIT, 1043★)
+Ported to: packages/engine/src/code-ast-deterministic.ts
+Source files referenced:
+- src/scanner.ts
+- src/detectors/routes.ts
+- src/detectors/schema.ts
+- src/ast/loader.ts
+- src/ast/extract-routes.ts
+- src/ast/extract-schema.ts
