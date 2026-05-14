@@ -2,6 +2,7 @@ import path from "node:path";
 import nlp from "compromise";
 import { z } from "zod";
 import { analyzeCodeSource } from "./code-analysis.js";
+import { enrichAnalysisClaimsWithHashes } from "./extracts.js";
 import { readExtractionArtifact } from "./ingest.js";
 import {
   extractRationaleFromMarkdown,
@@ -580,7 +581,7 @@ export async function analyzeSource(
     cached.extractionHash === manifest.extractionHash &&
     cached.schemaHash === schema.hash
   ) {
-    const normalizedCached = normalizeSourceAnalysis(manifest, cached);
+    const normalizedCached = normalizeSourceAnalysis(manifest, enrichAnalysisClaimsWithHashes(cached, manifest, extractedText));
     if (normalizedCached !== cached) {
       await writeJsonFile(cachePath, normalizedCached);
     }
@@ -664,7 +665,7 @@ export async function analyzeSource(
     }
   }
 
-  const normalized = normalizeSourceAnalysis(manifest, analysis);
+  const normalized = normalizeSourceAnalysis(manifest, enrichAnalysisClaimsWithHashes(analysis, manifest, extractedText));
   await writeJsonFile(cachePath, normalized);
   return normalized;
 }
