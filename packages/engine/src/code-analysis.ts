@@ -2937,7 +2937,8 @@ export async function buildCodeIndex(rootDir: string, manifests: SourceManifest[
       originalPath: manifest.originalPath,
       moduleName: analysis.code.moduleName,
       namespace: analysis.code.namespace,
-      aliases: [...aliases].sort((left, right) => left.localeCompare(right))
+      aliases: [...aliases].sort((left, right) => left.localeCompare(right)),
+      symbols: analysis.code.symbols.map((symbol) => ({ id: symbol.id, name: symbol.name, kind: symbol.kind, exported: symbol.exported }))
     });
   }
 

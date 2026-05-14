@@ -21,6 +21,7 @@ import {
   sortDecisionsForPromotion
 } from "./candidate-promotion.js";
 import { buildCodeIndex, enrichResolvedCodeImports, modulePageTitle } from "./code-analysis.js";
+import { isPromotedCodeSymbol, renderCodeSymbolPage } from "./code-templates/index.js";
 import { conflictConfidence, edgeConfidence, nodeConfidence } from "./confidence.js";
 import { defaultVaultSchema, initWorkspace, loadVaultConfig, PRIMARY_SCHEMA_FILENAME } from "./config.js";
 import { runConsolidation } from "./consolidate.js";
@@ -211,6 +212,10 @@ const COMPILE_PROGRESS_UPDATE_INTERVAL = 50;
 
 function uniqueStrings(values: string[]): string[] {
   return uniqueBy(values.filter(Boolean), (value) => value);
+}
+
+function codeSymbolPagePath(symbolId: string): string {
+  return `code/symbols/${slugify(symbolId.replace(/^symbol:/, ""))}.md`;
 }
 
 function createCompileProgressReporter(
@@ -2067,6 +2072,7 @@ function buildGraph(
   const manifestsById = new Map(manifests.map((manifest) => [manifest.sourceId, manifest]));
   const goPackageSymbolLookups = buildGoPackageSymbolLookups(analyses, manifestsById);
   const analysesBySourceId = new Map(analyses.map((analysis) => [analysis.sourceId, analysis]));
+  const pagesByNodeId = new Map(pages.flatMap((page) => page.nodeIds.map((nodeId) => [nodeId, page] as const)));
   const sourceNodes: GraphNode[] = manifests.map((manifest) => {
     const analysis = analysesBySourceId.get(manifest.sourceId);
     return {
@@ -2190,7 +2196,7 @@ function buildGraph(
           id: symbol.id,
           type: "symbol",
           label: symbol.name,
-          pageId: moduleId,
+          pageId: pagesByNodeId.get(symbol.id)?.id ?? moduleId,
           freshness: "fresh",
           confidence: symbol.exported ? 0.88 : 0.74,
           sourceIds: [analysis.sourceId],
@@ -3243,6 +3249,52 @@ async function syncVaultArtifacts(
             })
         )
       );
+      for (const symbol of analysis.code.symbols.filter(isPromotedCodeSymbol)) {
+        const relativePath = codeSymbolPagePath(symbol.id);
+        const sourceHashes = { [manifest.sourceId]: manifest.contentHash };
+        const sourceSemanticHashes = { [manifest.sourceId]: manifest.semanticHash };
+        records.push(
+          await buildManagedGraphPage(
+            path.join(paths.wikiDir, relativePath),
+            { managedBy: "system", confidence: symbol.exported ? 0.88 : 0.74, compiledFrom: [manifest.sourceId] },
+            (metadata) => ({
+              page: {
+                ...emptyGraphPage({
+                  id: symbol.id,
+                  path: relativePath,
+                  title: `${symbol.name} (${symbol.symbolKind ?? symbol.kind})`,
+                  kind: "symbol",
+                  sourceIds: [manifest.sourceId],
+                  sourceClass: manifest.sourceClass,
+                  projectIds: sourceProjectIds,
+                  nodeIds: [symbol.id],
+                  schemaHash: sourceSchemaHash,
+                  sourceHashes,
+                  sourceSemanticHashes,
+                  confidence: metadata.confidence,
+                  status: metadata.status
+                }),
+                backlinks: [sourceRecord.page.id, modulePreview.id],
+                relatedPageIds: [sourceRecord.page.id, modulePreview.id],
+                relatedNodeIds: [modulePreview.id],
+                relatedSourceIds: [manifest.sourceId]
+              },
+              content: renderCodeSymbolPage({
+                manifest,
+                analysis,
+                symbol,
+                path: relativePath,
+                schemaHash: sourceSchemaHash,
+                sourcePageId: sourceRecord.page.id,
+                modulePageId: modulePreview.id,
+                createdAt: metadata.createdAt,
+                updatedAt: metadata.updatedAt,
+                projectIds: sourceProjectIds
+              })
+            })
+          )
+        );
+      }
     }
   }
 
@@ -3576,6 +3628,19 @@ async function syncVaultArtifacts(
   await writeFileIfChanged(path.join(paths.wikiDir, "graph", "share-card.svg"), graphOrientation.shareSvg);
   await writeGraphShareBundle(paths.wikiDir, graphOrientation.shareBundleFiles);
   await writeJsonFile(paths.codeIndexPath, input.codeIndex);
+  await writeJsonFile(path.join(paths.stateDir, "code-symbols.json"), {
+    generatedAt: graph.generatedAt,
+    symbols: input.analyses.flatMap((analysis) =>
+      (analysis.code?.symbols ?? []).map((symbol) => ({
+        ...symbol,
+        sourceId: analysis.sourceId,
+        moduleId: analysis.code?.moduleId,
+        language: analysis.code?.language,
+        promoted: isPromotedCodeSymbol(symbol),
+        pagePath: isPromotedCodeSymbol(symbol) ? codeSymbolPagePath(symbol.id) : undefined
+      }))
+    )
+  });
   await withWriteLock(paths.compileStatePath, async () => {
     await writeJsonFile(paths.compileStatePath, {
       generatedAt: graph.generatedAt,
@@ -3696,6 +3761,7 @@ async function refreshIndexesAndSearch(rootDir: string, pages: GraphPage[]): Pro
   await Promise.all([
     ensureDir(path.join(paths.wikiDir, "sources")),
     ensureDir(path.join(paths.wikiDir, "code")),
+    ensureDir(path.join(paths.wikiDir, "code", "symbols")),
     ensureDir(path.join(paths.wikiDir, "concepts")),
     ensureDir(path.join(paths.wikiDir, "entities")),
     ensureDir(path.join(paths.wikiDir, "outputs")),
@@ -5537,6 +5603,10 @@ export async function compileVault(rootDir: string, options: CompileOptions = {}
   }
 }
 
+export async function reindexCodeWiki(rootDir: string): Promise<CompileResult> {
+  return compileVault(rootDir, { codeOnly: true, force: true });
+}
+
 async function compileVaultInner(
   rootDir: string,
   options: CompileOptions,
@@ -5594,7 +5664,8 @@ async function compileVaultInner(
     const projectId = sourceProjects[manifest.sourceId] ?? null;
     const projectChanged = (previousSourceProjects[manifest.sourceId] ?? null) !== projectId;
     const effectiveHashChanged = previousProjectSchemaHash(previousState, projectId) !== effectiveHashForProject(schemas, projectId);
-    if (hashChanged || noAnalysis || projectChanged || effectiveHashChanged) {
+    const forced = options.force && (!options.codeOnly || manifest.sourceKind === "code");
+    if (forced || hashChanged || noAnalysis || projectChanged || effectiveHashChanged) {
       if (options.codeOnly && manifest.sourceKind !== "code") {
         clean.push(manifest);
       } else {
@@ -5711,6 +5782,7 @@ async function compileVaultInner(
   await Promise.all([
     ensureDir(path.join(paths.wikiDir, "sources")),
     ensureDir(path.join(paths.wikiDir, "code")),
+    ensureDir(path.join(paths.wikiDir, "code", "symbols")),
     ensureDir(path.join(paths.wikiDir, "concepts")),
     ensureDir(path.join(paths.wikiDir, "entities")),
     ensureDir(path.join(paths.wikiDir, "outputs")),

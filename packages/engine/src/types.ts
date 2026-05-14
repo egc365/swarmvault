@@ -88,6 +88,7 @@ export type PageKind =
   | "index"
   | "source"
   | "module"
+  | "symbol"
   | "concept"
   | "entity"
   | "output"
@@ -900,6 +901,7 @@ export interface CodeIndexEntry {
   moduleName?: string;
   namespace?: string;
   aliases: string[];
+  symbols?: Array<{ id: string; name: string; kind: CodeSymbolKind; exported: boolean }>;
 }
 
 export interface CodeIndexArtifact {
@@ -1524,6 +1526,7 @@ export interface BlastRadiusResult {
 export interface CompileOptions {
   approve?: boolean;
   codeOnly?: boolean;
+  force?: boolean;
   maxTokens?: number;
 }
 

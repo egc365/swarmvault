@@ -152,6 +152,7 @@ export function inferPageKind(relativePath: string, explicitKind: unknown = unde
   if (
     explicitKind === "source" ||
     explicitKind === "module" ||
+    explicitKind === "symbol" ||
     explicitKind === "concept" ||
     explicitKind === "entity" ||
     explicitKind === "output" ||
