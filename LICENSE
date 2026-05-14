@@ -1,6 +1,6 @@
 MIT License
 
-Copyright (c) 2026 SwarmVault
+Copyright (c) 2026 Daniel Webb
 
 Permission is hereby granted, free of charge, to any person obtaining a copy
 of this software and associated documentation files (the "Software"), to deal
@@ -19,3 +19,7 @@ AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
 LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
+
+## Hot-cache session context
+Source: https://github.com/AgriciDaniel/claude-obsidian (MIT, 4933★)
+Ported to: packages/engine/src/hot-cache.ts
