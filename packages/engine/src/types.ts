@@ -2557,3 +2557,145 @@ export interface ScheduledRunResult {
 export interface ScheduleController {
   close(): Promise<void>;
 }
+
+// =====================================================================
+// Unified core hook payload contract (Sprint 5).
+// =====================================================================
+//
+// HookEvent is a discriminated union over `eventName`. Engine lifecycle
+// points emit these via hooks-core.ts `emitHookEvent`; in-process
+// subscribers register via `registerHookSink`. The Claude-Code-specific
+// hook adapter (hooks/claude-adapter.ts) is one such subscriber and
+// translates these into the wire format expected by the standalone
+// Claude Code hook script. External shape of the Claude-Code hook
+// stream is unchanged by this sprint.
+
+export type HookEventName =
+  | "PreIngest"
+  | "PostIngest"
+  | "PreCompile"
+  | "PostCompile"
+  | "PreQuery"
+  | "PostQuery"
+  | "SessionStart"
+  | "SessionEnd"
+  | "OnApprovalAccept"
+  | "OnApprovalReject"
+  | "OnCandidatePromote"
+  | "OnCandidateArchive"
+  | "OnOutputPromote";
+
+export interface HookEventBase {
+  eventName: HookEventName;
+  timestamp: string;
+  vaultId: string;
+  sessionId: string;
+}
+
+export interface PreIngestPayload {
+  sourcePath: string;
+  sourceKind?: SourceKind;
+}
+
+export interface PostIngestPayload {
+  sourceId: string;
+  manifestPath: string;
+  status: "ok" | "failed";
+  error?: string;
+}
+
+export interface PreCompilePayload {
+  rootDir: string;
+  approve?: boolean;
+  maxTokens?: number;
+}
+
+export interface PostCompilePayload {
+  pageCount: number;
+  sourceCount: number;
+  changedPages: string[];
+  promotedPageIds: string[];
+  staged: boolean;
+  success: boolean;
+  error?: string;
+}
+
+export interface PreQueryPayload {
+  question: string;
+  format?: string;
+  save: boolean;
+  review: boolean;
+}
+
+export interface PostQueryPayload {
+  question: string;
+  savedPath?: string;
+  savedPageId?: string;
+  approvalId?: string;
+  relatedPageIds: string[];
+  relatedSourceIds: string[];
+  success: boolean;
+  error?: string;
+}
+
+export interface SessionStartPayload {
+  trigger: string;
+  startedAt: string;
+}
+
+export interface SessionEndPayload {
+  trigger: string;
+  startedAt: string;
+  finishedAt: string;
+  success: boolean;
+  error?: string;
+}
+
+export interface OnApprovalAcceptPayload {
+  approvalId: string;
+  entries: ApprovalEntry[];
+}
+
+export interface OnApprovalRejectPayload {
+  approvalId: string;
+  entries: ApprovalEntry[];
+}
+
+export interface OnCandidatePromotePayload {
+  pageId: string;
+  fromPath: string;
+  toPath: string;
+  kind: "concept" | "entity";
+}
+
+export interface OnCandidateArchivePayload {
+  pageId: string;
+  fromPath: string;
+  kind: "concept" | "entity";
+}
+
+export interface OnOutputPromotePayload {
+  outputSlug: string;
+  outputPath: string;
+  conceptPageId: string;
+  conceptPath: string;
+  sourceIds: string[];
+  merged: boolean;
+}
+
+export type HookEvent =
+  | (HookEventBase & { eventName: "PreIngest"; payload: PreIngestPayload })
+  | (HookEventBase & { eventName: "PostIngest"; payload: PostIngestPayload })
+  | (HookEventBase & { eventName: "PreCompile"; payload: PreCompilePayload })
+  | (HookEventBase & { eventName: "PostCompile"; payload: PostCompilePayload })
+  | (HookEventBase & { eventName: "PreQuery"; payload: PreQueryPayload })
+  | (HookEventBase & { eventName: "PostQuery"; payload: PostQueryPayload })
+  | (HookEventBase & { eventName: "SessionStart"; payload: SessionStartPayload })
+  | (HookEventBase & { eventName: "SessionEnd"; payload: SessionEndPayload })
+  | (HookEventBase & { eventName: "OnApprovalAccept"; payload: OnApprovalAcceptPayload })
+  | (HookEventBase & { eventName: "OnApprovalReject"; payload: OnApprovalRejectPayload })
+  | (HookEventBase & { eventName: "OnCandidatePromote"; payload: OnCandidatePromotePayload })
+  | (HookEventBase & { eventName: "OnCandidateArchive"; payload: OnCandidateArchivePayload })
+  | (HookEventBase & { eventName: "OnOutputPromote"; payload: OnOutputPromotePayload });
+
+export type HookSink = (event: HookEvent) => void | Promise<void>;

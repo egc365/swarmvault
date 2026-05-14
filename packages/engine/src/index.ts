@@ -56,7 +56,26 @@ export {
 export { getGraphStatus } from "./graph-status.js";
 export { blastRadius, graphDiff, graphStats, validateGraphArtifact } from "./graph-tools.js";
 export { buildGraphTree, exportGraphTree, renderGraphTreeHtml } from "./graph-tree.js";
+export { attachClaudeAdapter, createClaudeAdapterSink } from "./hooks/claude-adapter.js";
+export {
+  acceptApprovalWithHooks,
+  archiveCandidateWithHooks,
+  promoteCandidateWithHooks,
+  promoteOutputWithHooks,
+  rejectApprovalWithHooks
+} from "./hooks/lifecycle-wrappers.js";
 export { getGitHookStatus, installGitHooks, uninstallGitHooks } from "./hooks.js";
+export {
+  beginEngineSession,
+  buildEvent,
+  clearHookSinks,
+  deriveVaultId,
+  emitHookEvent,
+  endEngineSession,
+  listHookSinks,
+  newSessionId,
+  registerHookSink
+} from "./hooks-core.js";
 export {
   addInput,
   checkTrackedRepoChanges,

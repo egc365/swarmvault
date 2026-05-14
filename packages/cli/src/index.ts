@@ -15,11 +15,11 @@ import type {
   SourceClass
 } from "@swarmvaultai/engine";
 import {
-  acceptApproval,
+  acceptApprovalWithHooks,
   addInput,
   addManagedSource,
   addWatchedRoot,
-  archiveCandidate,
+  archiveCandidateWithHooks,
   askChatSession,
   autoCommitWikiChanges,
   benchmarkVault,
@@ -75,9 +75,9 @@ import {
   mergeGraphFiles,
   pathGraphVault,
   previewCandidatePromotions,
+  promoteCandidateWithHooks,
+  promoteOutputWithHooks,
   proposeApprovalBundle,
-  promoteCandidate,
-  promoteOutput,
   pushGraphNeo4j,
   queryGraphVault,
   queryVault,
@@ -88,7 +88,7 @@ import {
   rebuildRetrievalIndex,
   refreshGraphClusters,
   registerLocalWhisperProvider,
-  rejectApproval,
+  rejectApprovalWithHooks,
   reloadManagedSources,
   removeWatchedRoot,
   renderContextPackLlms,
@@ -2682,7 +2682,7 @@ review
   .argument("<approvalId>", "Approval bundle identifier")
   .argument("[targets...]", "Optional page ids or paths to apply")
   .action(async (approvalId: string, targets: string[]) => {
-    const result = await acceptApproval(process.cwd(), approvalId, targets);
+    const result = await acceptApprovalWithHooks(process.cwd(), approvalId, targets);
     if (isJson()) {
       emitJson(result);
     } else {
@@ -2696,7 +2696,7 @@ review
   .argument("<approvalId>", "Approval bundle identifier")
   .argument("[targets...]", "Optional page ids or paths to accept")
   .action(async (approvalId: string, targets: string[]) => {
-    const result = await acceptApproval(process.cwd(), approvalId, targets);
+    const result = await acceptApprovalWithHooks(process.cwd(), approvalId, targets);
     if (isJson()) {
       emitJson(result);
     } else {
@@ -2710,7 +2710,7 @@ review
   .argument("<approvalId>", "Approval bundle identifier")
   .argument("[targets...]", "Optional page ids or paths to reject")
   .action(async (approvalId: string, targets: string[]) => {
-    const result = await rejectApproval(process.cwd(), approvalId, targets);
+    const result = await rejectApprovalWithHooks(process.cwd(), approvalId, targets);
     if (isJson()) {
       emitJson(result);
     } else {
@@ -2742,7 +2742,7 @@ candidate
   .description("Promote a candidate into its active concept or entity path.")
   .argument("<target>", "Candidate page id or path")
   .action(async (target: string) => {
-    const result = await promoteCandidate(process.cwd(), target);
+    const result = await promoteCandidateWithHooks(process.cwd(), target);
     if (isJson()) {
       emitJson(result);
     } else {
@@ -2755,7 +2755,7 @@ candidate
   .description("Archive a candidate by removing it from the active candidate set.")
   .argument("<target>", "Candidate page id or path")
   .action(async (target: string) => {
-    const result = await archiveCandidate(process.cwd(), target);
+    const result = await archiveCandidateWithHooks(process.cwd(), target);
     if (isJson()) {
       emitJson(result);
     } else {
@@ -2770,7 +2770,7 @@ output
   .argument("<slug>", "Saved output slug under wiki/outputs")
   .option("--into <concept-slug>", "Merge into an existing concept slug")
   .action(async (slug: string, options: { into?: string }) => {
-    const result = await promoteOutput(process.cwd(), slug, { into: options.into });
+    const result = await promoteOutputWithHooks(process.cwd(), slug, { into: options.into });
     if (isJson()) {
       emitJson(result);
     } else {

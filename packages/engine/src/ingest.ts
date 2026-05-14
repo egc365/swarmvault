@@ -62,9 +62,9 @@ import type {
   RedactionSummary,
   RepoSyncResult,
   ResolvedPaths,
+  SourceAnalysis,
   SourceAttachment,
   SourceClass,
-  SourceAnalysis,
   SourceExtractionArtifact,
   SourceManifest,
   VaultConfig,
@@ -2345,7 +2345,11 @@ function lineRangeForClaim(text: string, claimText: string, searchFromLine: numb
   return [Math.max(1, searchFromLine), Math.max(1, searchFromLine)];
 }
 
-function enrichExtractionArtifactClaims(artifact: SourceExtractionArtifact, sourceFile: string, sourceText: string | undefined): SourceExtractionArtifact {
+function enrichExtractionArtifactClaims(
+  artifact: SourceExtractionArtifact,
+  sourceFile: string,
+  sourceText: string | undefined
+): SourceExtractionArtifact {
   if (!artifact.vision?.claims?.length) return artifact;
   let nextLine = 1;
   return {
@@ -2355,7 +2359,12 @@ function enrichExtractionArtifactClaims(artifact: SourceExtractionArtifact, sour
       claims: artifact.vision.claims.map((claim) => {
         const lineRange = claim.lineRange ?? lineRangeForClaim(sourceText ?? "", claim.text, nextLine);
         nextLine = lineRange[1] + 1;
-        return { ...claim, sourceFile: claim.sourceFile ?? sourceFile, lineRange, claimHash: claim.claimHash ?? claimContentHash({ sourceFile, lineRange, text: claim.text }) };
+        return {
+          ...claim,
+          sourceFile: claim.sourceFile ?? sourceFile,
+          lineRange,
+          claimHash: claim.claimHash ?? claimContentHash({ sourceFile, lineRange, text: claim.text })
+        };
       })
     }
   };
@@ -2433,7 +2442,9 @@ async function claimStalenessForModifiedSource(
   if (!lineRanges.length) return { changedLineRanges: [], changedClaimHashes: [], stalePageIds: [] };
   const analysis = await readJsonFile<SourceAnalysis>(path.join(paths.analysesDir, `${manifest.sourceId}.json`));
   const changedClaimHashes = (analysis?.claims ?? [])
-    .filter((claim) => claim.claimHash && claim.lineRange && lineRanges.some((range) => rangesOverlap(range, claim.lineRange as [number, number])))
+    .filter(
+      (claim) => claim.claimHash && claim.lineRange && lineRanges.some((range) => rangesOverlap(range, claim.lineRange as [number, number]))
+    )
     .map((claim) => claim.claimHash as string);
   const stalePageIds = await markPagesStaleByClaimHashes(paths, manifest.sourceId, changedClaimHashes, new Date().toISOString());
   return { changedLineRanges: lineRanges, changedClaimHashes, stalePageIds };
@@ -2496,7 +2507,9 @@ export async function checkTrackedRepoChanges(rootDir: string, repoRoots?: strin
       const sourceKind = existing[0]?.sourceKind ?? (await inferTrackedFileSourceKind(absolutePath));
       const claimStaleness =
         existing.length > 0 && sourceKind !== "binary"
-          ? await claimStalenessForModifiedSource(rootDir, paths, existing[0] as SourceManifest, payloadBytes.toString("utf8")).catch(() => ({}))
+          ? await claimStalenessForModifiedSource(rootDir, paths, existing[0] as SourceManifest, payloadBytes.toString("utf8")).catch(
+              () => ({})
+            )
           : {};
       changes.push({
         path: toPosix(path.relative(rootDir, absolutePath)),
@@ -3613,17 +3626,43 @@ function isSupportedInboxKind(sourceKind: SourceManifest["sourceKind"]): boolean
 
 export async function ingestInputDetailed(rootDir: string, input: string, options?: IngestOptions): Promise<InputIngestResult> {
   const { paths } = await initWorkspace(rootDir);
-  const normalizedOptions = await attachIngestRedactor(rootDir, normalizeIngestOptions(options));
-  const absoluteInput = path.resolve(rootDir, input);
-  const repoRoot =
-    isHttpUrl(input) || normalizedOptions.repoRoot
-      ? normalizedOptions.repoRoot
-      : await detectScopedRepoRoot(rootDir, absoluteInput, path.dirname(absoluteInput));
-  const prepared = isHttpUrl(input)
-    ? await prepareUrlInputs(rootDir, input, normalizedOptions)
-    : await prepareFileInputs(rootDir, absoluteInput, repoRoot);
+  const { buildEvent, emitHookEvent, newSessionId } = await import("./hooks-core.js");
+  const sessionId = newSessionId("ingest");
+  await emitHookEvent(rootDir, buildEvent(rootDir, sessionId, "PreIngest", { sourcePath: input }));
+  try {
+    const normalizedOptions = await attachIngestRedactor(rootDir, normalizeIngestOptions(options));
+    const absoluteInput = path.resolve(rootDir, input);
+    const repoRoot =
+      isHttpUrl(input) || normalizedOptions.repoRoot
+        ? normalizedOptions.repoRoot
+        : await detectScopedRepoRoot(rootDir, absoluteInput, path.dirname(absoluteInput));
+    const prepared = isHttpUrl(input)
+      ? await prepareUrlInputs(rootDir, input, normalizedOptions)
+      : await prepareFileInputs(rootDir, absoluteInput, repoRoot);
 
-  return await persistPreparedInputs(rootDir, input, prepared, paths, normalizedOptions.redactor);
+    const result = await persistPreparedInputs(rootDir, input, prepared, paths, normalizedOptions.redactor);
+    const firstManifest = [...result.created, ...result.updated, ...result.unchanged][0];
+    await emitHookEvent(
+      rootDir,
+      buildEvent(rootDir, sessionId, "PostIngest", {
+        sourceId: firstManifest?.sourceId ?? "",
+        manifestPath: paths.manifestsDir,
+        status: "ok"
+      })
+    );
+    return result;
+  } catch (error) {
+    await emitHookEvent(
+      rootDir,
+      buildEvent(rootDir, sessionId, "PostIngest", {
+        sourceId: "",
+        manifestPath: paths.manifestsDir,
+        status: "failed",
+        error: error instanceof Error ? error.message : String(error)
+      })
+    );
+    throw error;
+  }
 }
 
 export async function ingestInput(rootDir: string, input: string, options?: IngestOptions): Promise<SourceManifest> {
