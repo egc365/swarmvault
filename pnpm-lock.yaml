@@ -123,6 +123,9 @@ importers:
       orga:
         specifier: ^4.7.1
         version: 4.7.1
+      oxigraph:
+        specifier: ^0.5.8
+        version: 0.5.8
       pdfjs-dist:
         specifier: ^5.4.394
         version: 5.6.205
@@ -2575,6 +2578,9 @@ packages:
 
   orga@4.7.1:
     resolution: {integrity: sha512-7f163963srwEs6WbPzGEYyWgp0NQiWL2XFjNMOdIrIH2mF2qclzHqY3C3rZVwiRHDmgt1pLuHKbTC8P6j6QXcQ==}
+
+  oxigraph@0.5.8:
+    resolution: {integrity: sha512-ZwAVUf/Vh8OCaIrnmsYie/A/hVPSvrIi+CFWe6YbaAp4llTb6ozPIHYqBvUQgGju0D4gcQAAyXjPV8pGNsPCbQ==}
 
   p-map@7.0.4:
     resolution: {integrity: sha512-tkAQEw8ysMzmkhgw8k+1U/iPhWNhykKnSk4Rd5zLoPJCuJaGRPo6YposrZgaxHKzDHdDWWZvE/Sk7hsL2X/CpQ==}
@@ -5870,6 +5876,8 @@ snapshots:
       date-fns: 2.30.0
       date-fns-tz: 2.0.1(date-fns@2.30.0)
       text-kit: 4.5.1
+
+  oxigraph@0.5.8: {}
 
   p-map@7.0.4: {}
 
