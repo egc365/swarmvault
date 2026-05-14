@@ -644,6 +644,9 @@ export interface ExtractionClaim {
   text: string;
   confidence: number;
   polarity: Polarity;
+  claimHash?: string;
+  sourceFile?: string;
+  lineRange?: [number, number];
 }
 
 export interface ImageVisionExtraction {
@@ -811,6 +814,9 @@ export interface SourceClaim {
   status: ClaimStatus;
   polarity: Polarity;
   citation: string;
+  claimHash?: string;
+  sourceFile?: string;
+  lineRange?: [number, number];
 }
 
 export interface CodeImport {
@@ -916,7 +922,7 @@ export interface SourceAnalysis {
 
 export interface GraphNode {
   id: string;
-  type: "source" | "concept" | "entity" | "module" | "symbol" | "rationale" | "memory_task" | "decision";
+  type: "source" | "concept" | "entity" | "module" | "symbol" | "rationale" | "memory_task" | "decision" | "output";
   label: string;
   /** Lowercased NFKD-normalized label (diacritic-insensitive) for lexical matching. */
   normLabel?: string;
@@ -1862,6 +1868,9 @@ export interface GraphStatusChange {
   sourceId?: string;
   sourceKind?: SourceKind;
   refreshType: "code" | "semantic";
+  changedLineRanges?: Array<[number, number]>;
+  changedClaimHashes?: string[];
+  stalePageIds?: string[];
 }
 
 export interface GraphStatusResult {

@@ -90,6 +90,7 @@ export type { MigrationPlan, MigrationResult, MigrationStep, VaultVersionRecord 
 export { ALL_MIGRATIONS, detectVaultVersion, planMigration, runMigration } from "./migrate.js";
 export type { LocalWhisperAdapterOptions, WhisperRunner, WhisperRunResult } from "./providers/local-whisper.js";
 export { LocalWhisperProviderAdapter } from "./providers/local-whisper.js";
+export { promoteOutput } from "./output-promotion.js";
 export type {
   LocalWhisperBinaryDiscovery,
   LocalWhisperSetupStatus,
