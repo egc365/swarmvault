@@ -5508,6 +5508,42 @@ async function runConfiguredBenchmark(rootDir: string, config: VaultConfig): Pro
 
 export async function compileVault(rootDir: string, options: CompileOptions = {}): Promise<CompileResult> {
   const startedAt = new Date().toISOString();
+  const { buildEvent, emitHookEvent, newSessionId } = await import("./hooks-core.js");
+  const hookSessionId = newSessionId("compile");
+  await emitHookEvent(
+    rootDir,
+    buildEvent(rootDir, hookSessionId, "PreCompile", {
+      rootDir,
+      approve: options.approve,
+      maxTokens: options.maxTokens
+    })
+  );
+  try {
+    return await compileVaultInner(rootDir, options, startedAt, hookSessionId);
+  } catch (error) {
+    await emitHookEvent(
+      rootDir,
+      buildEvent(rootDir, hookSessionId, "PostCompile", {
+        pageCount: 0,
+        sourceCount: 0,
+        changedPages: [],
+        promotedPageIds: [],
+        staged: false,
+        success: false,
+        error: error instanceof Error ? error.message : String(error)
+      })
+    );
+    throw error;
+  }
+}
+
+async function compileVaultInner(
+  rootDir: string,
+  options: CompileOptions,
+  startedAt: string,
+  hookSessionId: string
+): Promise<CompileResult> {
+  const { buildEvent, emitHookEvent } = await import("./hooks-core.js");
   const { config, paths } = await initWorkspace(rootDir);
   const schemas = await loadVaultSchemas(rootDir);
   const provider = await getProviderForTask(rootDir, "compileProvider");
@@ -5880,7 +5916,7 @@ export async function compileVault(rootDir: string, options: CompileOptions = {}
     promotedFromAuto.push(...autoRun.promotedPageIds);
   }
 
-  return {
+  const compileResult: CompileResult = {
     graphPath: paths.graphPath,
     pageCount: sync.allPages.length,
     changedPages: sync.changedPages,
@@ -5895,6 +5931,18 @@ export async function compileVault(rootDir: string, options: CompileOptions = {}
     autoPromotion: autoPromotionSummary,
     tokenStats
   };
+  await emitHookEvent(
+    rootDir,
+    buildEvent(rootDir, hookSessionId, "PostCompile", {
+      pageCount: compileResult.pageCount,
+      sourceCount: compileResult.sourceCount,
+      changedPages: compileResult.changedPages,
+      promotedPageIds: compileResult.promotedPageIds,
+      staged: compileResult.staged,
+      success: true
+    })
+  );
+  return compileResult;
 }
 
 export async function queryVault(rootDir: string, rawOptions: QueryOptions): Promise<QueryResult> {
@@ -5907,118 +5955,170 @@ export async function queryVault(rootDir: string, rawOptions: QueryOptions): Pro
   const save = options.save ?? true;
   const review = options.review ?? false;
   const outputFormat = normalizeOutputFormat(options.format);
-  const schemas = await loadVaultSchemas(rootDir);
-  const query = await executeQuery(rootDir, options.question, outputFormat, {
-    gapFill: options.gapFill,
-    gapFillTask: "queryProvider"
-  });
-  let savedPath: string | undefined;
-  let stagedPath: string | undefined;
-  let savedPageId: string | undefined;
-  let approvalId: string | undefined;
-  let approvalDir: string | undefined;
-  let outputAssets: OutputAsset[] = [];
-
-  if (save) {
-    const assetBundle = await generateOutputArtifacts(rootDir, {
-      slug: slugify(options.question),
-      title: options.question,
+  const { buildEvent, emitHookEvent, newSessionId } = await import("./hooks-core.js");
+  const hookSessionId = newSessionId("query");
+  await emitHookEvent(
+    rootDir,
+    buildEvent(rootDir, hookSessionId, "PreQuery", {
       question: options.question,
-      answer: query.answer,
-      citations: query.citations,
       format: outputFormat,
-      relatedPageCount: query.relatedPageIds.length,
-      relatedNodeCount: query.relatedNodeIds.length,
-      projectId: query.projectIds[0] ?? null
+      save,
+      review
+    })
+  );
+  try {
+    const schemas = await loadVaultSchemas(rootDir);
+    const query = await executeQuery(rootDir, options.question, outputFormat, {
+      gapFill: options.gapFill,
+      gapFillTask: "queryProvider"
     });
-    outputAssets = assetBundle.outputAssets;
-    const outputInput = {
-      question: options.question,
-      answer: assetBundle.answer,
+    let savedPath: string | undefined;
+    let stagedPath: string | undefined;
+    let savedPageId: string | undefined;
+    let approvalId: string | undefined;
+    let approvalDir: string | undefined;
+    let outputAssets: OutputAsset[] = [];
+
+    if (save) {
+      const assetBundle = await generateOutputArtifacts(rootDir, {
+        slug: slugify(options.question),
+        title: options.question,
+        question: options.question,
+        answer: query.answer,
+        citations: query.citations,
+        format: outputFormat,
+        relatedPageCount: query.relatedPageIds.length,
+        relatedNodeCount: query.relatedNodeIds.length,
+        projectId: query.projectIds[0] ?? null
+      });
+      outputAssets = assetBundle.outputAssets;
+      const outputInput = {
+        question: options.question,
+        answer: assetBundle.answer,
+        citations: query.citations,
+        schemaHash: query.schemaHash,
+        outputFormat,
+        outputAssets: assetBundle.outputAssets,
+        relatedPageIds: query.relatedPageIds,
+        relatedNodeIds: query.relatedNodeIds,
+        relatedSourceIds: query.relatedSourceIds,
+        projectIds: query.projectIds,
+        extraTags: categoryTagsForSchema(getEffectiveSchema(schemas, query.projectIds[0] ?? null), [options.question, assetBundle.answer]),
+        origin: "query"
+      } satisfies Omit<Parameters<typeof buildOutputPage>[0], "metadata">;
+      if (review) {
+        const staged = await prepareOutputPageSave(rootDir, {
+          ...outputInput,
+          assetFiles: assetBundle.assetFiles
+        });
+        const approval = await stageOutputApprovalBundle(rootDir, [
+          {
+            page: staged.page,
+            content: staged.content,
+            assetFiles: staged.assetFiles
+          }
+        ]);
+        stagedPath = path.join(approval.approvalDir, "wiki", staged.page.path);
+        savedPageId = staged.page.id;
+        approvalId = approval.approvalId;
+        approvalDir = approval.approvalDir;
+      } else {
+        const saved = await persistOutputPage(rootDir, {
+          ...outputInput,
+          assetFiles: assetBundle.assetFiles
+        });
+        await refreshVaultAfterOutputSave(rootDir);
+        savedPath = saved.savedPath;
+        savedPageId = saved.page.id;
+      }
+    }
+
+    const provider = await getProviderForTask(rootDir, "queryProvider");
+    await recordSession(rootDir, {
+      operation: "query",
+      title: options.question,
+      startedAt,
+      finishedAt: new Date().toISOString(),
+      providerId: provider.id,
+      success: true,
+      relatedSourceIds: query.relatedSourceIds,
+      relatedPageIds: savedPageId ? [...query.relatedPageIds, savedPageId] : query.relatedPageIds,
+      relatedNodeIds: query.relatedNodeIds,
       citations: query.citations,
-      schemaHash: query.schemaHash,
-      outputFormat,
-      outputAssets: assetBundle.outputAssets,
+      tokenUsage: query.usage,
+      lines: [
+        `citations=${query.citations.join(",") || "none"}`,
+        `saved=${Boolean(savedPath)}`,
+        `staged=${Boolean(stagedPath)}`,
+        `format=${outputFormat}`,
+        `rawSources=${query.relatedSourceIds.length}`
+      ]
+    });
+    if (options.memoryTaskId) {
+      await updateMemoryTask(rootDir, options.memoryTaskId, {
+        note: `Query: ${options.question}`,
+        pageId: savedPageId,
+        sourceId: query.relatedSourceIds[0],
+        nodeId: query.relatedNodeIds[0]
+      });
+    }
+
+    const result: QueryResult = {
+      answer: query.answer,
+      savedPath,
+      stagedPath,
+      savedPageId,
+      citations: query.citations,
       relatedPageIds: query.relatedPageIds,
       relatedNodeIds: query.relatedNodeIds,
       relatedSourceIds: query.relatedSourceIds,
-      projectIds: query.projectIds,
-      extraTags: categoryTagsForSchema(getEffectiveSchema(schemas, query.projectIds[0] ?? null), [options.question, assetBundle.answer]),
-      origin: "query"
-    } satisfies Omit<Parameters<typeof buildOutputPage>[0], "metadata">;
-    if (review) {
-      const staged = await prepareOutputPageSave(rootDir, {
-        ...outputInput,
-        assetFiles: assetBundle.assetFiles
-      });
-      const approval = await stageOutputApprovalBundle(rootDir, [
-        {
-          page: staged.page,
-          content: staged.content,
-          assetFiles: staged.assetFiles
-        }
-      ]);
-      stagedPath = path.join(approval.approvalDir, "wiki", staged.page.path);
-      savedPageId = staged.page.id;
-      approvalId = approval.approvalId;
-      approvalDir = approval.approvalDir;
-    } else {
-      const saved = await persistOutputPage(rootDir, {
-        ...outputInput,
-        assetFiles: assetBundle.assetFiles
-      });
-      await refreshVaultAfterOutputSave(rootDir);
-      savedPath = saved.savedPath;
-      savedPageId = saved.page.id;
+      outputFormat,
+      saved: Boolean(savedPath),
+      staged: Boolean(stagedPath),
+      approvalId,
+      approvalDir,
+      outputAssets
+    };
+    // Retention access log tap: record one access entry per touched page,
+    // batched in a single lock acquisition. Awaited so test cleanup
+    // doesn't race with concurrent writes into state/retention/.
+    try {
+      const { recordPageAccessBatch } = await import("./retention.js");
+      const touched = new Set<string>([...query.relatedPageIds, ...(savedPageId ? [savedPageId] : [])]);
+      if (touched.size > 0) {
+        const queriedAt = new Date().toISOString();
+        const records = [...touched].map((pageId) => ({ pageId, queriedAt, queryId: hookSessionId }));
+        await recordPageAccessBatch(rootDir, records);
+      }
+    } catch {
+      // Access tap is best-effort; never break the query path.
     }
+    await emitHookEvent(
+      rootDir,
+      buildEvent(rootDir, hookSessionId, "PostQuery", {
+        question: options.question,
+        savedPath,
+        savedPageId,
+        approvalId,
+        relatedPageIds: query.relatedPageIds,
+        relatedSourceIds: query.relatedSourceIds,
+        success: true
+      })
+    );
+    return result;
+  } catch (error) {
+    await emitHookEvent(
+      rootDir,
+      buildEvent(rootDir, hookSessionId, "PostQuery", {
+        question: options.question,
+        relatedPageIds: [],
+        relatedSourceIds: [],
+        success: false,
+        error: error instanceof Error ? error.message : String(error)
+      })
+    );
+    throw error;
   }
-
-  const provider = await getProviderForTask(rootDir, "queryProvider");
-  await recordSession(rootDir, {
-    operation: "query",
-    title: options.question,
-    startedAt,
-    finishedAt: new Date().toISOString(),
-    providerId: provider.id,
-    success: true,
-    relatedSourceIds: query.relatedSourceIds,
-    relatedPageIds: savedPageId ? [...query.relatedPageIds, savedPageId] : query.relatedPageIds,
-    relatedNodeIds: query.relatedNodeIds,
-    citations: query.citations,
-    tokenUsage: query.usage,
-    lines: [
-      `citations=${query.citations.join(",") || "none"}`,
-      `saved=${Boolean(savedPath)}`,
-      `staged=${Boolean(stagedPath)}`,
-      `format=${outputFormat}`,
-      `rawSources=${query.relatedSourceIds.length}`
-    ]
-  });
-  if (options.memoryTaskId) {
-    await updateMemoryTask(rootDir, options.memoryTaskId, {
-      note: `Query: ${options.question}`,
-      pageId: savedPageId,
-      sourceId: query.relatedSourceIds[0],
-      nodeId: query.relatedNodeIds[0]
-    });
-  }
-
-  return {
-    answer: query.answer,
-    savedPath,
-    stagedPath,
-    savedPageId,
-    citations: query.citations,
-    relatedPageIds: query.relatedPageIds,
-    relatedNodeIds: query.relatedNodeIds,
-    relatedSourceIds: query.relatedSourceIds,
-    outputFormat,
-    saved: Boolean(savedPath),
-    staged: Boolean(stagedPath),
-    approvalId,
-    approvalDir,
-    outputAssets
-  };
 }
 
 export async function exploreVault(rootDir: string, rawOptions: ExploreOptions): Promise<ExploreResult> {

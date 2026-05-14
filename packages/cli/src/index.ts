@@ -15,11 +15,11 @@ import type {
   SourceClass
 } from "@swarmvaultai/engine";
 import {
-  acceptApproval,
+  acceptApprovalWithHooks,
   addInput,
   addManagedSource,
   addWatchedRoot,
-  archiveCandidate,
+  archiveCandidateWithHooks,
   askChatSession,
   autoCommitWikiChanges,
   benchmarkVault,
@@ -75,9 +75,9 @@ import {
   mergeGraphFiles,
   pathGraphVault,
   previewCandidatePromotions,
+  promoteCandidateWithHooks,
+  promoteOutputWithHooks,
   proposeApprovalBundle,
-  promoteCandidate,
-  promoteOutput,
   pushGraphNeo4j,
   queryGraphVault,
   queryVault,
@@ -88,7 +88,7 @@ import {
   rebuildRetrievalIndex,
   refreshGraphClusters,
   registerLocalWhisperProvider,
-  rejectApproval,
+  rejectApprovalWithHooks,
   reloadManagedSources,
   removeWatchedRoot,
   renderContextPackLlms,
@@ -2682,7 +2682,7 @@ review
   .argument("<approvalId>", "Approval bundle identifier")
   .argument("[targets...]", "Optional page ids or paths to apply")
   .action(async (approvalId: string, targets: string[]) => {
-    const result = await acceptApproval(process.cwd(), approvalId, targets);
+    const result = await acceptApprovalWithHooks(process.cwd(), approvalId, targets);
     if (isJson()) {
       emitJson(result);
     } else {
@@ -2696,7 +2696,7 @@ review
   .argument("<approvalId>", "Approval bundle identifier")
   .argument("[targets...]", "Optional page ids or paths to accept")
   .action(async (approvalId: string, targets: string[]) => {
-    const result = await acceptApproval(process.cwd(), approvalId, targets);
+    const result = await acceptApprovalWithHooks(process.cwd(), approvalId, targets);
     if (isJson()) {
       emitJson(result);
     } else {
@@ -2710,7 +2710,7 @@ review
   .argument("<approvalId>", "Approval bundle identifier")
   .argument("[targets...]", "Optional page ids or paths to reject")
   .action(async (approvalId: string, targets: string[]) => {
-    const result = await rejectApproval(process.cwd(), approvalId, targets);
+    const result = await rejectApprovalWithHooks(process.cwd(), approvalId, targets);
     if (isJson()) {
       emitJson(result);
     } else {
@@ -2742,7 +2742,7 @@ candidate
   .description("Promote a candidate into its active concept or entity path.")
   .argument("<target>", "Candidate page id or path")
   .action(async (target: string) => {
-    const result = await promoteCandidate(process.cwd(), target);
+    const result = await promoteCandidateWithHooks(process.cwd(), target);
     if (isJson()) {
       emitJson(result);
     } else {
@@ -2755,7 +2755,7 @@ candidate
   .description("Archive a candidate by removing it from the active candidate set.")
   .argument("<target>", "Candidate page id or path")
   .action(async (target: string) => {
-    const result = await archiveCandidate(process.cwd(), target);
+    const result = await archiveCandidateWithHooks(process.cwd(), target);
     if (isJson()) {
       emitJson(result);
     } else {
@@ -2770,7 +2770,7 @@ output
   .argument("<slug>", "Saved output slug under wiki/outputs")
   .option("--into <concept-slug>", "Merge into an existing concept slug")
   .action(async (slug: string, options: { into?: string }) => {
-    const result = await promoteOutput(process.cwd(), slug, { into: options.into });
+    const result = await promoteOutputWithHooks(process.cwd(), slug, { into: options.into });
     if (isJson()) {
       emitJson(result);
     } else {
@@ -2813,6 +2813,52 @@ candidate
     for (const decision of decisions) {
       const verdict = decision.promote ? "promote" : "skip";
       log(`${verdict} ${decision.pageId} score=${decision.score.toFixed(2)} ${decision.reasons.join("; ")}`);
+    }
+  });
+
+const retention = program.command("retention").description("Retention/decay scoring for vault pages.");
+retention
+  .command("scan")
+  .description("Score every page in the graph for retention and list pages below the threshold.")
+  .option("--threshold <value>", "Score threshold; pages strictly below are flagged (default 0.3)", "0.3")
+  .option("--json", "Emit structured JSON")
+  .action(async (options: { threshold?: string; json?: boolean }) => {
+    const { scanRetention } = await import("@swarmvaultai/engine");
+    const threshold = options.threshold === undefined ? undefined : Number.parseFloat(options.threshold);
+    if (threshold !== undefined && (!Number.isFinite(threshold) || threshold < 0 || threshold > 1)) {
+      throw new Error(`Invalid --threshold ${options.threshold}; expected a number in [0, 1].`);
+    }
+    const result = await scanRetention(process.cwd(), { threshold });
+    if (isJson() || options.json) {
+      emitJson(result);
+      return;
+    }
+    log(`Scanned ${result.scanned} page${result.scanned === 1 ? "" : "s"} at threshold ${result.threshold}`);
+    if (!result.candidates.length) {
+      log("No retention candidates.");
+      return;
+    }
+    log(`Candidates (${result.candidates.length}):`);
+    for (const candidate of result.candidates) {
+      log(`  ${candidate.pageId} score=${candidate.score.toFixed(3)} ${candidate.reasons.join("; ")}`);
+    }
+  });
+
+retention
+  .command("show")
+  .description("Show the retention score and reasons for a single page.")
+  .argument("<pageId>", "Page id (e.g. concept:foo, output:bar)")
+  .option("--json", "Emit structured JSON")
+  .action(async (pageId: string, options: { json?: boolean }) => {
+    const { scoreRetention } = await import("@swarmvaultai/engine");
+    const result = await scoreRetention(process.cwd(), pageId);
+    if (isJson() || options.json) {
+      emitJson(result);
+      return;
+    }
+    log(`${result.pageId} score=${result.score.toFixed(3)}`);
+    for (const reason of result.reasons) {
+      log(`  - ${reason}`);
     }
   });
 
