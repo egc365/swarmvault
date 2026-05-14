@@ -158,6 +158,7 @@ export {
   listPages,
   pathGraphVault,
   previewCandidatePromotions,
+  proposeApprovalBundle,
   promoteCandidate,
   queryGraphVault,
   queryVault,

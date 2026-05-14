@@ -75,6 +75,7 @@ import {
   mergeGraphFiles,
   pathGraphVault,
   previewCandidatePromotions,
+  proposeApprovalBundle,
   promoteCandidate,
   pushGraphNeo4j,
   queryGraphVault,
@@ -2658,6 +2659,33 @@ review
         log(entry.diff);
         log("");
       }
+    }
+  });
+
+review
+  .command("propose")
+  .description("Validate and stage an approval bundle JSON file.")
+  .argument("<bundleJson>", "Approval bundle manifest JSON path")
+  .action(async (bundleJson: string) => {
+    const result = await proposeApprovalBundle(process.cwd(), bundleJson);
+    if (isJson()) {
+      emitJson(result);
+    } else {
+      log(`Proposed ${result.approvalId} with ${result.entryCount} entr${result.entryCount === 1 ? "y" : "ies"}.`);
+    }
+  });
+
+review
+  .command("apply")
+  .description("Apply all pending entries, or selected entries, from a staged approval bundle.")
+  .argument("<approvalId>", "Approval bundle identifier")
+  .argument("[targets...]", "Optional page ids or paths to apply")
+  .action(async (approvalId: string, targets: string[]) => {
+    const result = await acceptApproval(process.cwd(), approvalId, targets);
+    if (isJson()) {
+      emitJson(result);
+    } else {
+      log(`Applied ${result.updatedEntries.length} entr${result.updatedEntries.length === 1 ? "y" : "ies"} from ${approvalId}.`);
     }
   });
 

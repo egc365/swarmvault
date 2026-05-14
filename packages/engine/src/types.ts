@@ -122,6 +122,7 @@ export type PageStatus = "draft" | "candidate" | "active" | "blocked" | "complet
 export type PageManager = "system" | "human";
 export type ApprovalEntryStatus = "pending" | "accepted" | "rejected";
 export type ApprovalChangeType = "create" | "update" | "delete" | "promote";
+export type ApprovalOp = "keep" | "update" | "merge" | "supersede" | "archive";
 export type ApprovalBundleType = "compile" | "generated-output" | "source-review" | "guided-source" | "guided-session";
 export type ApprovalEntryLabel = "source-brief" | "source-review" | "source-guide" | "guided-update";
 export type GuidedSourceSessionStatus = "awaiting_input" | "ready_to_stage" | "staged" | "accepted" | "rejected";
@@ -1409,6 +1410,12 @@ export interface ApprovalEntry {
   title: string;
   kind: PageKind;
   changeType: ApprovalChangeType;
+  /**
+   * Optional deterministic review operation. When set, this is the
+   * authoritative approval semantic; changeType remains a storage/index hint.
+   * When absent, the legacy changeType executor path applies.
+   */
+  op?: ApprovalOp;
   status: ApprovalEntryStatus;
   sourceIds: string[];
   nextPath?: string;
