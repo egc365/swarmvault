@@ -72,6 +72,7 @@ export {
 } from "./ingest.js";
 export type { ResolvedLargeRepoDefaults } from "./large-repo-defaults.js";
 export { LARGE_REPO_NODE_THRESHOLD, resolveLargeRepoDefaults } from "./large-repo-defaults.js";
+export { SwarmVaultLockError, withReadLock, withWriteLock } from "./locks.js";
 export { createMcpServer, startMcpServer } from "./mcp.js";
 export {
   buildMemoryGraphElements,
@@ -88,9 +89,9 @@ export {
 } from "./memory.js";
 export type { MigrationPlan, MigrationResult, MigrationStep, VaultVersionRecord } from "./migrate.js";
 export { ALL_MIGRATIONS, detectVaultVersion, planMigration, runMigration } from "./migrate.js";
+export { promoteOutput } from "./output-promotion.js";
 export type { LocalWhisperAdapterOptions, WhisperRunner, WhisperRunResult } from "./providers/local-whisper.js";
 export { LocalWhisperProviderAdapter } from "./providers/local-whisper.js";
-export { promoteOutput } from "./output-promotion.js";
 export type {
   LocalWhisperBinaryDiscovery,
   LocalWhisperSetupStatus,
@@ -159,8 +160,8 @@ export {
   listPages,
   pathGraphVault,
   previewCandidatePromotions,
-  proposeApprovalBundle,
   promoteCandidate,
+  proposeApprovalBundle,
   queryGraphVault,
   queryVault,
   readApproval,

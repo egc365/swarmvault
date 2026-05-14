@@ -2,6 +2,7 @@ import fs from "node:fs/promises";
 import path from "node:path";
 import matter from "gray-matter";
 import { initWorkspace } from "./config.js";
+import { withWriteLock } from "./locks.js";
 import type { GraphArtifact, PendingSemanticRefreshEntry, WatchStatusResult } from "./types.js";
 import { ensureDir, fileExists, readJsonFile, toPosix, writeFileIfChanged, writeJsonFile } from "./utils.js";
 
@@ -129,10 +130,12 @@ export async function markPagesStaleForSources(rootDir: string, sourceIds: strin
   });
 
   if (graphChanged) {
-    await writeJsonFile(paths.graphPath, {
-      ...graph,
-      nodes: nextNodes,
-      pages: nextPages
+    await withWriteLock(paths.graphPath, async () => {
+      await writeJsonFile(paths.graphPath, {
+        ...graph,
+        nodes: nextNodes,
+        pages: nextPages
+      });
     });
   }
 

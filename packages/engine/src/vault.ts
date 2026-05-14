@@ -42,6 +42,7 @@ import {
 } from "./graph-tools.js";
 import { ingestInput, listManifests, readExtractedText } from "./ingest.js";
 import { resolveLargeRepoDefaults } from "./large-repo-defaults.js";
+import { withWriteLock } from "./locks.js";
 import { recordSession } from "./logs.js";
 import {
   buildAggregatePage,
@@ -96,7 +97,6 @@ import type {
   ApprovalEntry,
   ApprovalEntryDetail,
   ApprovalEntryLabel,
-  ApprovalOp,
   ApprovalFrontmatterChange,
   ApprovalManifest,
   ApprovalStructuredDiff,
@@ -2840,7 +2840,10 @@ async function writeApprovalManifest(
   paths: Awaited<ReturnType<typeof loadVaultConfig>>["paths"],
   manifest: ApprovalManifest
 ): Promise<void> {
-  await fs.writeFile(approvalManifestPath(paths, manifest.approvalId), `${JSON.stringify(manifest, null, 2)}\n`, "utf8");
+  const manifestPath = approvalManifestPath(paths, manifest.approvalId);
+  await withWriteLock(manifestPath, async () => {
+    await fs.writeFile(manifestPath, `${JSON.stringify(manifest, null, 2)}\n`, "utf8");
+  });
 }
 
 const approvalOpSchema = z.enum(["keep", "update", "merge", "supersede", "archive"]);
@@ -2899,11 +2902,7 @@ function archiveApprovalPath(pageId: string): string {
   return path.posix.join("archive", `${slugify(pageId) || "page"}.md`);
 }
 
-async function writePageWithFrontmatter(
-  filePath: string,
-  frontmatter: Record<string, unknown>,
-  content: string
-): Promise<void> {
+async function writePageWithFrontmatter(filePath: string, frontmatter: Record<string, unknown>, content: string): Promise<void> {
   const parsed = matter(content);
   await ensureDir(path.dirname(filePath));
   await fs.writeFile(filePath, matter.stringify(parsed.content, { ...parsed.data, ...frontmatter }), "utf8");
@@ -2919,7 +2918,12 @@ function validateProposedApproval(manifest: ApprovalManifest, graph: GraphArtifa
         throw new Error(`Approval entry references unknown page id: ${entry.pageId}`);
       }
     }
-    if ((entry.op === "merge" || entry.op === "supersede") && entry.nextPath && !pagePaths.has(entry.nextPath) && !pageIds.has(entry.nextPath)) {
+    if (
+      (entry.op === "merge" || entry.op === "supersede") &&
+      entry.nextPath &&
+      !pagePaths.has(entry.nextPath) &&
+      !pageIds.has(entry.nextPath)
+    ) {
       throw new Error(`Approval entry ${entry.pageId} references unknown merge target: ${entry.nextPath}`);
     }
     if (entry.previousPath && !pagePaths.has(entry.previousPath)) {
@@ -2950,19 +2954,26 @@ export async function proposeApprovalBundle(rootDir: string, bundleJson: string)
     await fs.cp(bundledWikiDir, path.join(approvalDir, "wiki"), { recursive: true, force: true });
   }
   const bundledGraphPath = path.join(bundleDir, "state", "graph.json");
+  const approvalGraphPath = path.join(approvalDir, "state", "graph.json");
   if (await fileExists(bundledGraphPath)) {
-    await fs.copyFile(bundledGraphPath, path.join(approvalDir, "state", "graph.json"));
+    await withWriteLock(approvalGraphPath, async () => {
+      await fs.copyFile(bundledGraphPath, approvalGraphPath);
+    });
   } else if (await fileExists(paths.graphPath)) {
-    await fs.copyFile(paths.graphPath, path.join(approvalDir, "state", "graph.json"));
+    await withWriteLock(approvalGraphPath, async () => {
+      await fs.copyFile(paths.graphPath, approvalGraphPath);
+    });
   } else {
-    await writeJsonFile(path.join(approvalDir, "state", "graph.json"), {
-      generatedAt: new Date().toISOString(),
-      nodes: [],
-      edges: [],
-      hyperedges: [],
-      sources: [],
-      pages: []
-    } satisfies GraphArtifact);
+    await withWriteLock(approvalGraphPath, async () => {
+      await writeJsonFile(approvalGraphPath, {
+        generatedAt: new Date().toISOString(),
+        nodes: [],
+        edges: [],
+        hyperedges: [],
+        sources: [],
+        pages: []
+      } satisfies GraphArtifact);
+    });
   }
   return approvalSummary(manifest);
 }
@@ -3056,7 +3067,10 @@ async function stageApprovalBundle(
     await fs.writeFile(targetPath, file.content, "utf8");
   }
 
-  await fs.writeFile(path.join(approvalDir, "state", "graph.json"), JSON.stringify(graph, null, 2), "utf8");
+  const approvalGraphPath = path.join(approvalDir, "state", "graph.json");
+  await withWriteLock(approvalGraphPath, async () => {
+    await fs.writeFile(approvalGraphPath, JSON.stringify(graph, null, 2), "utf8");
+  });
   await writeApprovalManifest(paths, {
     approvalId,
     createdAt: new Date().toISOString(),
@@ -3555,37 +3569,41 @@ async function syncVaultArtifacts(
     await fs.rm(path.join(paths.wikiDir, relativePath), { force: true });
   }
 
-  await writeJsonFile(paths.graphPath, graph);
+  await withWriteLock(paths.graphPath, async () => {
+    await writeJsonFile(paths.graphPath, graph);
+  });
   await writeJsonFile(path.join(paths.wikiDir, "graph", "report.json"), graphOrientation.report);
   await writeFileIfChanged(path.join(paths.wikiDir, "graph", "share-card.svg"), graphOrientation.shareSvg);
   await writeGraphShareBundle(paths.wikiDir, graphOrientation.shareBundleFiles);
   await writeJsonFile(paths.codeIndexPath, input.codeIndex);
-  await writeJsonFile(paths.compileStatePath, {
-    generatedAt: graph.generatedAt,
-    rootSchemaHash: input.schemas.root.hash,
-    projectSchemaHashes: Object.fromEntries(
-      Object.keys(input.schemas.projects)
-        .sort((left, right) => left.localeCompare(right))
-        .map((projectId) => [projectId, input.schemas.projects[projectId]?.hash ?? ""])
-    ),
-    effectiveSchemaHashes: {
-      global: input.schemas.effective.global.hash,
-      projects: Object.fromEntries(
-        Object.keys(input.schemas.effective.projects)
+  await withWriteLock(paths.compileStatePath, async () => {
+    await writeJsonFile(paths.compileStatePath, {
+      generatedAt: graph.generatedAt,
+      rootSchemaHash: input.schemas.root.hash,
+      projectSchemaHashes: Object.fromEntries(
+        Object.keys(input.schemas.projects)
           .sort((left, right) => left.localeCompare(right))
-          .map((projectId) => [projectId, input.schemas.effective.projects[projectId]?.hash ?? input.schemas.effective.global.hash])
-      )
-    },
-    projectConfigHash: projectConfigHash(config),
-    analyses: Object.fromEntries(input.analyses.map((analysis) => [analysis.sourceId, analysisSignature(analysis)])),
-    sourceHashes: Object.fromEntries(input.manifests.map((manifest) => [manifest.sourceId, manifest.contentHash])),
-    sourceSemanticHashes: Object.fromEntries(input.manifests.map((manifest) => [manifest.sourceId, manifest.semanticHash])),
-    sourceProjects: input.sourceProjects,
-    outputHashes: input.outputHashes,
-    insightHashes: input.insightHashes,
-    memoryHashes: input.memoryHashes,
-    candidateHistory
-  } satisfies CompileState);
+          .map((projectId) => [projectId, input.schemas.projects[projectId]?.hash ?? ""])
+      ),
+      effectiveSchemaHashes: {
+        global: input.schemas.effective.global.hash,
+        projects: Object.fromEntries(
+          Object.keys(input.schemas.effective.projects)
+            .sort((left, right) => left.localeCompare(right))
+            .map((projectId) => [projectId, input.schemas.effective.projects[projectId]?.hash ?? input.schemas.effective.global.hash])
+        )
+      },
+      projectConfigHash: projectConfigHash(config),
+      analyses: Object.fromEntries(input.analyses.map((analysis) => [analysis.sourceId, analysisSignature(analysis)])),
+      sourceHashes: Object.fromEntries(input.manifests.map((manifest) => [manifest.sourceId, manifest.contentHash])),
+      sourceSemanticHashes: Object.fromEntries(input.manifests.map((manifest) => [manifest.sourceId, manifest.semanticHash])),
+      sourceProjects: input.sourceProjects,
+      outputHashes: input.outputHashes,
+      insightHashes: input.insightHashes,
+      memoryHashes: input.memoryHashes,
+      candidateHistory
+    } satisfies CompileState);
+  });
   await rebuildSearchIndex(paths.searchDbPath, allPages, paths.wikiDir, { rootDir, stateDir: paths.stateDir });
   await writeRetrievalManifest(rootDir, graph);
 
@@ -3653,9 +3671,11 @@ async function refreshIndexesAndSearch(rootDir: string, pages: GraphPage[]): Pro
     )
   );
   if (currentGraph) {
-    await writeJsonFile(paths.graphPath, {
-      ...currentGraph,
-      pages: pagesWithGraph
+    await withWriteLock(paths.graphPath, async () => {
+      await writeJsonFile(paths.graphPath, {
+        ...currentGraph,
+        pages: pagesWithGraph
+      });
     });
   }
   const configuredProjects = projectEntries(config);
@@ -3981,7 +4001,10 @@ async function stageOutputApprovalBundle(
     sources: previousGraph?.sources ?? [],
     pages: nextPages
   };
-  await fs.writeFile(path.join(approvalDir, "state", "graph.json"), JSON.stringify(graph, null, 2), "utf8");
+  const approvalGraphPath = path.join(approvalDir, "state", "graph.json");
+  await withWriteLock(approvalGraphPath, async () => {
+    await fs.writeFile(approvalGraphPath, JSON.stringify(graph, null, 2), "utf8");
+  });
   await writeApprovalManifest(paths, {
     approvalId,
     createdAt: new Date().toISOString(),
@@ -4576,13 +4599,7 @@ export async function acceptApproval(rootDir: string, approvalId: string, target
       const currentTargetContent = await fs.readFile(targetAbsolutePath, "utf8");
       const mergedTargetContent =
         stagedTargetContent ??
-        [
-          currentTargetContent.trimEnd(),
-          "",
-          `<!-- merged from ${sourcePage.id} -->`,
-          "",
-          matter(sourceContent).content.trim()
-        ].join("\n");
+        [currentTargetContent.trimEnd(), "", `<!-- merged from ${sourcePage.id} -->`, "", matter(sourceContent).content.trim()].join("\n");
       const targetFrontmatter = op === "supersede" ? { supersedes: sourcePage.id } : {};
       await writePageWithFrontmatter(targetAbsolutePath, targetFrontmatter, mergedTargetContent);
 
@@ -4693,8 +4710,12 @@ export async function acceptApproval(rootDir: string, approvalId: string, target
   };
   compileState.generatedAt = nextGraph.generatedAt;
 
-  await writeJsonFile(paths.graphPath, nextGraph);
-  await writeJsonFile(paths.compileStatePath, compileState);
+  await withWriteLock(paths.graphPath, async () => {
+    await writeJsonFile(paths.graphPath, nextGraph);
+  });
+  await withWriteLock(paths.compileStatePath, async () => {
+    await writeJsonFile(paths.compileStatePath, compileState);
+  });
   await refreshIndexesAndSearch(rootDir, nextGraph.pages);
   await writeApprovalManifest(paths, manifest);
   if (manifest.sourceSessionId) {
@@ -4851,8 +4872,12 @@ export async function promoteCandidate(rootDir: string, target: string): Promise
   compileState.generatedAt = nextUpdatedAt;
   updateCandidateHistory(compileState, nextPage);
 
-  await writeJsonFile(paths.graphPath, nextGraph);
-  await writeJsonFile(paths.compileStatePath, compileState);
+  await withWriteLock(paths.graphPath, async () => {
+    await writeJsonFile(paths.graphPath, nextGraph);
+  });
+  await withWriteLock(paths.compileStatePath, async () => {
+    await writeJsonFile(paths.compileStatePath, compileState);
+  });
   await refreshIndexesAndSearch(rootDir, nextPages);
   await recordSession(rootDir, {
     operation: "candidate",
@@ -5055,7 +5080,9 @@ export async function createSupersessionEdge(
     edges: nextEdges,
     pages: nextPages
   };
-  await writeJsonFile(paths.graphPath, nextGraph);
+  await withWriteLock(paths.graphPath, async () => {
+    await writeJsonFile(paths.graphPath, nextGraph);
+  });
 
   await recordSession(rootDir, {
     operation: "supersede",
@@ -5097,8 +5124,12 @@ export async function archiveCandidate(rootDir: string, target: string): Promise
   compileState.generatedAt = nextGraph.generatedAt;
   updateCandidateHistory(compileState, candidate, true);
 
-  await writeJsonFile(paths.graphPath, nextGraph);
-  await writeJsonFile(paths.compileStatePath, compileState);
+  await withWriteLock(paths.graphPath, async () => {
+    await writeJsonFile(paths.graphPath, nextGraph);
+  });
+  await withWriteLock(paths.compileStatePath, async () => {
+    await writeJsonFile(paths.compileStatePath, compileState);
+  });
   await refreshIndexesAndSearch(rootDir, nextPages);
   await recordSession(rootDir, {
     operation: "candidate",
@@ -6564,9 +6595,11 @@ export async function refreshGraphClusters(rootDir: string, options: { resolutio
       (page) => page.id
     )
   );
-  await writeJsonFile(paths.graphPath, {
-    ...refreshedGraph,
-    pages
+  await withWriteLock(paths.graphPath, async () => {
+    await writeJsonFile(paths.graphPath, {
+      ...refreshedGraph,
+      pages
+    });
   });
   await refreshIndexesAndSearch(rootDir, pages);
 
