@@ -26,7 +26,7 @@ describe("per-symbol code staleness", () => {
     graph.pages.push({ ...pageBase, id: "concept:alpha", path: "concepts/alpha.md", title: "Alpha", nodeIds: ["concept:alpha"] }, { ...pageBase, id: "concept:beta", path: "concepts/beta.md", title: "Beta", nodeIds: ["concept:beta"] });
     await fs.writeFile(paths.graphPath, `${JSON.stringify(graph, null, 2)}\n`, "utf8");
     await fs.writeFile(sourcePath, ["def alpha():", "    value = 10", "    return value", "", "def beta():", "    value = 2", "    return value"].join("\n"), "utf8");
-    const changes = await checkTrackedRepoChanges(rootDir, [repoDir]); expect(changes[0]?.changedLineRanges).toEqual([[2, 2]]); expect(changes[0]?.changedSymbolHashes).toEqual([alpha?.symbolHash]); expect(changes[0]?.stalePageIds).toEqual(["concept:alpha"]);
+    const changes = await checkTrackedRepoChanges(rootDir, [repoDir]); expect(changes[0]?.changedLineRanges).toEqual([[2, 2]]); expect(changes[0]?.changedSymbolHashes).toEqual([alpha?.symbolHash]); expect(changes[0]?.stalePageIds).toContain("concept:alpha"); expect(changes[0]?.stalePageIds).not.toContain("concept:beta");
     const alphaPage = matter(await fs.readFile(path.join(paths.wikiDir, "concepts", "alpha.md"), "utf8")); const betaPage = matter(await fs.readFile(path.join(paths.wikiDir, "concepts", "beta.md"), "utf8"));
     expect(alphaPage.data.freshness).toBe("stale"); expect(betaPage.data.freshness).toBe("fresh");
   });

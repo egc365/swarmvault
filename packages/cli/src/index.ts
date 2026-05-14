@@ -90,6 +90,7 @@ import {
   readContextPack,
   readGraphReport,
   readMemoryTask,
+  reindexCodeWiki,
   rebuildRetrievalIndex,
   refreshGraphClusters,
   refreshHotCacheIfStale,
@@ -867,6 +868,14 @@ async function runScanCommand(
   }
 }
 
+async function looksLikeCodeRepo(input: string): Promise<boolean> {
+  const root = path.resolve(process.cwd(), input);
+  for (const marker of ["package.json", "pyproject.toml", "Cargo.toml", "go.mod"]) {
+    if (await access(path.join(root, marker)).then(() => true, () => false)) return true;
+  }
+  return false;
+}
+
 async function resolveChatResumeId(resume: boolean | string | undefined): Promise<string | undefined> {
   if (!resume) {
     return undefined;
@@ -1147,6 +1156,8 @@ program
           )
         : null;
       if (directoryResult) {
+        const codeRepo = await looksLikeCodeRepo(input);
+        const codeCompile = codeRepo ? await reindexCodeWiki(process.cwd()) : undefined;
         const scope =
           options.review || guideEnabled
             ? await (async () => {
@@ -1190,10 +1201,12 @@ program
         if (isJson()) {
           emitJson(
             completedGuide
-              ? { ingest: directoryResult, guide: completedGuide }
+              ? { ingest: directoryResult, codeCompile, guide: completedGuide }
               : review
-                ? { ingest: directoryResult, review }
-                : directoryResult
+                ? { ingest: directoryResult, codeCompile, review }
+                : codeCompile
+                  ? { ingest: directoryResult, codeCompile }
+                  : directoryResult
           );
         } else {
           const failedCount = directoryResult.failed?.length ?? 0;
@@ -1222,6 +1235,7 @@ program
           if (redactionLine) {
             log(redactionLine);
           }
+          if (codeCompile) log(`Code wiki: ${codeCompile.pageCount} page(s), ${codeCompile.changedPages.length} changed.`);
         }
         if (options.commit) {
           const msg = await autoCommitWikiChanges(process.cwd(), "ingest", input, { force: true });
@@ -2717,6 +2731,13 @@ supersession
     log(`Predecessors: ${chain.predecessors.length ? chain.predecessors.join(" -> ") : "(none)"}`);
     log(`Successors: ${chain.successors.length ? chain.successors.join(" -> ") : "(none)"}`);
   });
+
+const code = program.command("code").description("Code-wiki workflows.");
+code.command("reindex").description("Re-run code analysis and regenerate code wiki pages without re-ingesting sources.").action(async () => {
+  const result = await reindexCodeWiki(process.cwd());
+  if (isJson()) emitJson(result);
+  else log(`Code wiki reindexed: ${result.pageCount} page(s), ${result.changedPages.length} changed.`);
+});
 
 const review = program.command("review").description("Review staged compile approval bundles.");
 review

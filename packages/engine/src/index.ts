@@ -208,6 +208,7 @@ export {
   readApproval,
   readGraphReport,
   readPage,
+  reindexCodeWiki,
   refreshGraphClusters,
   rejectApproval,
   runAutoPromotion,
