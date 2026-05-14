@@ -14,3 +14,7 @@ Source files referenced:
 Source: https://github.com/abbacusgroup/cortex (MIT)
 Ported to: packages/engine/src/graph-deterministic.ts
 Source files referenced: src/cortex/ontology/namespaces.py, src/cortex/pipeline/reason.py, src/cortex/pipeline/advanced_reason.py, src/cortex/retrieval/graph.py, benchmarks/b3_contradiction/test_bench.py, benchmarks/b4_graph_intelligence/test_bench.py
+
+## Hot-cache session context
+Source: https://github.com/AgriciDaniel/claude-obsidian (MIT, 4933★)
+Ported to: packages/engine/src/hot-cache.ts
