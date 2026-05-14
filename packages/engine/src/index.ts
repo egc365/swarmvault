@@ -73,6 +73,7 @@ export {
   rejectApprovalWithHooks
 } from "./hooks/lifecycle-wrappers.js";
 export { getGitHookStatus, installGitHooks, uninstallGitHooks } from "./hooks.js";
+export { scanAstDeterministic } from "./code-ast-deterministic.js";
 export {
   beginEngineSession,
   buildEvent,
