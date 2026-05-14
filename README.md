@@ -588,7 +588,7 @@ pnpm test
 pnpm build
 ```
 
-See [CONTRIBUTING.md](CONTRIBUTING.md) for PR guidelines, and [docs/live-testing.md](docs/live-testing.md) for the published-package validation workflow.
+See [CONTRIBUTING.md](CONTRIBUTING.md) for PR guidelines, [docs/local-testing.md](docs/local-testing.md) for the start-to-finish source-checkout testing flow, and [docs/live-testing.md](docs/live-testing.md) for the published-package validation workflow.
 
 See [STABILITY.md](STABILITY.md) for the public-API contract, semver promise, and deprecation policy. Stable surfaces follow semantic versioning once 1.0.0 is cut; experimental surfaces may change in any minor release.
 

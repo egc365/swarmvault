@@ -24,7 +24,7 @@ pnpm live:smoke:ollama
 OPENAI_API_KEY=... pnpm live:smoke:openai
 ```
 
-See [docs/live-testing.md](./docs/live-testing.md) for the full live-testing workflow and manual checklist.
+See [docs/local-testing.md](./docs/local-testing.md) for the start-to-finish source-checkout testing flow, and [docs/live-testing.md](./docs/live-testing.md) for the full live-testing workflow and manual checklist.
 
 ## Pull Requests
 
