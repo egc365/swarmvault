@@ -96,6 +96,7 @@ import type {
   ApprovalEntry,
   ApprovalEntryDetail,
   ApprovalEntryLabel,
+  ApprovalOp,
   ApprovalFrontmatterChange,
   ApprovalManifest,
   ApprovalStructuredDiff,
@@ -2842,6 +2843,130 @@ async function writeApprovalManifest(
   await fs.writeFile(approvalManifestPath(paths, manifest.approvalId), `${JSON.stringify(manifest, null, 2)}\n`, "utf8");
 }
 
+const approvalOpSchema = z.enum(["keep", "update", "merge", "supersede", "archive"]);
+const approvalEntrySchema = z.object({
+  pageId: z.string().min(1),
+  title: z.string().min(1),
+  kind: z.string().min(1),
+  changeType: z.enum(["create", "update", "delete", "promote"]),
+  op: approvalOpSchema.optional(),
+  status: z.enum(["pending", "accepted", "rejected"]).default("pending"),
+  sourceIds: z.array(z.string()).default([]),
+  nextPath: z.string().optional(),
+  previousPath: z.string().optional(),
+  label: z.enum(["source-brief", "source-review", "source-guide", "guided-update"]).optional()
+});
+
+const approvalManifestSchema = z.object({
+  approvalId: z.string().min(1),
+  createdAt: z.string().default(() => new Date().toISOString()),
+  bundleType: z.string().optional(),
+  title: z.string().optional(),
+  sourceSessionId: z.string().optional(),
+  entries: z.array(approvalEntrySchema).min(1)
+});
+
+function findApprovalPage(graph: GraphArtifact | null | undefined, entry: ApprovalEntry, target?: string): GraphPage | undefined {
+  return graph?.pages.find(
+    (page) => page.id === entry.pageId || page.path === target || page.path === entry.previousPath || page.path === entry.nextPath
+  );
+}
+
+function findApprovalTargetPage(graph: GraphArtifact | null | undefined, target: string): GraphPage | undefined {
+  return graph?.pages.find((page) => page.id === target || page.path === target);
+}
+
+function pageNodeId(graph: GraphArtifact | null | undefined, pageId: string): string {
+  return graph?.nodes.find((node) => node.pageId === pageId)?.id ?? pageId;
+}
+
+function approvalEdge(graph: GraphArtifact | null | undefined, sourcePageId: string, targetPageId: string, relation: string): GraphEdge {
+  const source = pageNodeId(graph, sourcePageId);
+  const target = pageNodeId(graph, targetPageId);
+  return {
+    id: `${source}->${target}:${relation}`,
+    source,
+    target,
+    relation,
+    status: "inferred",
+    evidenceClass: "inferred",
+    confidence: 1,
+    provenance: [sourcePageId, targetPageId]
+  };
+}
+
+function archiveApprovalPath(pageId: string): string {
+  return path.posix.join("archive", `${slugify(pageId) || "page"}.md`);
+}
+
+async function writePageWithFrontmatter(
+  filePath: string,
+  frontmatter: Record<string, unknown>,
+  content: string
+): Promise<void> {
+  const parsed = matter(content);
+  await ensureDir(path.dirname(filePath));
+  await fs.writeFile(filePath, matter.stringify(parsed.content, { ...parsed.data, ...frontmatter }), "utf8");
+}
+
+function validateProposedApproval(manifest: ApprovalManifest, graph: GraphArtifact | null): void {
+  if (!graph) return;
+  const pageIds = new Set(graph.pages.map((page) => page.id));
+  const pagePaths = new Set(graph.pages.map((page) => page.path));
+  for (const entry of manifest.entries) {
+    if (entry.op === "keep" || entry.op === "archive" || entry.op === "merge" || entry.op === "supersede") {
+      if (!pageIds.has(entry.pageId)) {
+        throw new Error(`Approval entry references unknown page id: ${entry.pageId}`);
+      }
+    }
+    if ((entry.op === "merge" || entry.op === "supersede") && entry.nextPath && !pagePaths.has(entry.nextPath) && !pageIds.has(entry.nextPath)) {
+      throw new Error(`Approval entry ${entry.pageId} references unknown merge target: ${entry.nextPath}`);
+    }
+    if (entry.previousPath && !pagePaths.has(entry.previousPath)) {
+      throw new Error(`Approval entry ${entry.pageId} references unknown previousPath: ${entry.previousPath}`);
+    }
+  }
+}
+
+export async function proposeApprovalBundle(rootDir: string, bundleJson: string): Promise<ApprovalSummary> {
+  const { paths } = await loadVaultConfig(rootDir);
+  const absoluteBundlePath = path.resolve(rootDir, bundleJson);
+  const parsed = approvalManifestSchema.parse(JSON.parse(await fs.readFile(absoluteBundlePath, "utf8")) as unknown);
+  const manifest = {
+    ...parsed,
+    bundleType: normalizeApprovalBundleType(parsed.bundleType),
+    entries: parsed.entries as ApprovalEntry[]
+  } satisfies ApprovalManifest;
+  validateProposedApproval(manifest, await readJsonFile<GraphArtifact>(paths.graphPath));
+
+  const approvalDir = path.join(paths.approvalsDir, manifest.approvalId);
+  await ensureDir(path.join(approvalDir, "wiki"));
+  await ensureDir(path.join(approvalDir, "state"));
+  await writeApprovalManifest(paths, manifest);
+
+  const bundleDir = path.dirname(absoluteBundlePath);
+  const bundledWikiDir = path.join(bundleDir, "wiki");
+  if (await fileExists(bundledWikiDir)) {
+    await fs.cp(bundledWikiDir, path.join(approvalDir, "wiki"), { recursive: true, force: true });
+  }
+  const bundledGraphPath = path.join(bundleDir, "state", "graph.json");
+  if (await fileExists(bundledGraphPath)) {
+    await fs.copyFile(bundledGraphPath, path.join(approvalDir, "state", "graph.json"));
+  } else if (await fileExists(paths.graphPath)) {
+    await fs.copyFile(paths.graphPath, path.join(approvalDir, "state", "graph.json"));
+  } else {
+    await writeJsonFile(path.join(approvalDir, "state", "graph.json"), {
+      generatedAt: new Date().toISOString(),
+      nodes: [],
+      edges: [],
+      hyperedges: [],
+      sources: [],
+      pages: []
+    } satisfies GraphArtifact);
+  }
+  return approvalSummary(manifest);
+}
+
 async function buildApprovalEntries(
   paths: Awaited<ReturnType<typeof loadVaultConfig>>["paths"],
   changedFiles: Array<{ relativePath: string; content: string }>,
@@ -4364,9 +4489,143 @@ export async function acceptApproval(rootDir: string, approvalId: string, target
     currentGraph?.pages ??
     (bundleGraph?.pages ?? []).filter((page) => page.kind === "index" || page.kind === "output" || page.kind === "insight");
   let nextPages = [...basePages];
+  let nextEdges = [...(currentGraph?.edges ?? bundleGraph?.edges ?? [])];
   const compileState = (await readJsonFile<CompileState>(paths.compileStatePath)) ?? emptyCompileState();
+  const sessionLines: string[] = [];
 
   for (const entry of selectedEntries) {
+    if (entry.op) {
+      const op = entry.op;
+      const graphForLookup = currentGraph ?? bundleGraph;
+      if (op === "keep") {
+        sessionLines.push(`keep=${entry.pageId}`);
+        entry.status = "accepted";
+        continue;
+      }
+
+      if (op === "update") {
+        if (!entry.nextPath) {
+          throw new Error(`Approval entry ${entry.pageId} is missing a staged path.`);
+        }
+        const stagedAbsolutePath = path.join(paths.approvalsDir, approvalId, "wiki", entry.nextPath);
+        const stagedContent = await fs.readFile(stagedAbsolutePath, "utf8");
+        const targetAbsolutePath = path.join(paths.wikiDir, entry.nextPath);
+        await ensureDir(path.dirname(targetAbsolutePath));
+        await fs.writeFile(targetAbsolutePath, stagedContent, "utf8");
+        const nextPage =
+          bundleGraph?.pages.find((page) => page.id === entry.pageId && page.path === entry.nextPath) ??
+          parseStoredPage(entry.nextPath, stagedContent);
+        nextPages = nextPages.filter(
+          (page) => page.id !== entry.pageId && page.path !== entry.nextPath && (!entry.previousPath || page.path !== entry.previousPath)
+        );
+        nextPages.push(nextPage);
+        updateCandidateHistory(compileState, nextPage);
+        sessionLines.push(`update=${entry.pageId}`);
+        entry.status = "accepted";
+        continue;
+      }
+
+      if (op === "archive") {
+        const sourcePath = entry.previousPath ?? entry.nextPath;
+        if (!sourcePath) {
+          throw new Error(`Approval entry ${entry.pageId} is missing a source path to archive.`);
+        }
+        const sourcePage = findApprovalPage(graphForLookup, entry, sourcePath);
+        const sourceAbsolutePath = path.join(paths.wikiDir, sourcePath);
+        const sourceContent = await fs.readFile(sourceAbsolutePath, "utf8");
+        const archivePath = archiveApprovalPath(entry.pageId);
+        await ensureDir(path.join(paths.wikiDir, "archive"));
+        await fs.writeFile(path.join(paths.wikiDir, archivePath), sourceContent, "utf8");
+        await fs.rm(sourceAbsolutePath, { force: true });
+        const archivedPage = {
+          ...(sourcePage ?? parseStoredPage(archivePath, sourceContent)),
+          path: archivePath,
+          status: "archived" as const,
+          updatedAt: new Date().toISOString()
+        };
+        nextPages = nextPages.filter((page) => page.id !== archivedPage.id && page.path !== sourcePath && page.path !== archivePath);
+        nextPages.push(archivedPage);
+        updateCandidateHistory(compileState, archivedPage, true);
+        sessionLines.push(`archive=${entry.pageId}->${archivePath}`);
+        entry.status = "accepted";
+        continue;
+      }
+
+      const sourcePath = entry.previousPath;
+      const targetRef = entry.nextPath;
+      if (!sourcePath || !targetRef) {
+        throw new Error(`Approval entry ${entry.pageId} requires previousPath and nextPath for op=${op}.`);
+      }
+      const sourcePage = findApprovalPage(graphForLookup, entry, sourcePath);
+      const targetPage = findApprovalTargetPage(graphForLookup, targetRef);
+      if (!sourcePage) {
+        throw new Error(`Approval entry ${entry.pageId} source page not found: ${sourcePath}`);
+      }
+      if (!targetPage) {
+        throw new Error(`Approval entry ${entry.pageId} target page not found: ${targetRef}`);
+      }
+      if (sourcePage.id === targetPage.id) {
+        throw new Error(`Approval entry ${entry.pageId} requires a distinct target for op=${op}.`);
+      }
+
+      const sourceAbsolutePath = path.join(paths.wikiDir, sourcePath);
+      const targetAbsolutePath = path.join(paths.wikiDir, targetPage.path);
+      const sourceContent = await fs.readFile(sourceAbsolutePath, "utf8");
+      const stagedTargetPath = path.join(paths.approvalsDir, approvalId, "wiki", targetPage.path);
+      const stagedTargetContent = await fs.readFile(stagedTargetPath, "utf8").catch(() => undefined);
+      const currentTargetContent = await fs.readFile(targetAbsolutePath, "utf8");
+      const mergedTargetContent =
+        stagedTargetContent ??
+        [
+          currentTargetContent.trimEnd(),
+          "",
+          `<!-- merged from ${sourcePage.id} -->`,
+          "",
+          matter(sourceContent).content.trim()
+        ].join("\n");
+      const targetFrontmatter = op === "supersede" ? { supersedes: sourcePage.id } : {};
+      await writePageWithFrontmatter(targetAbsolutePath, targetFrontmatter, mergedTargetContent);
+
+      const archivePath = archiveApprovalPath(sourcePage.id);
+      const sourceFrontmatter = {
+        redirect_to: targetPage.path,
+        mergedInto: targetPage.id,
+        ...(op === "supersede" ? { supersededBy: targetPage.id } : {})
+      };
+      await writePageWithFrontmatter(path.join(paths.wikiDir, archivePath), sourceFrontmatter, sourceContent);
+      await fs.rm(sourceAbsolutePath, { force: true });
+
+      const archivedSourcePage: GraphPage = {
+        ...sourcePage,
+        path: archivePath,
+        status: "archived",
+        freshness: op === "supersede" ? "stale" : sourcePage.freshness,
+        supersededBy: op === "supersede" ? targetPage.id : sourcePage.supersededBy,
+        updatedAt: new Date().toISOString()
+      };
+      const updatedTargetPage: GraphPage = {
+        ...targetPage,
+        updatedAt: new Date().toISOString()
+      };
+      nextPages = nextPages.filter((page) => page.id !== sourcePage.id && page.id !== targetPage.id);
+      nextPages.push(archivedSourcePage, updatedTargetPage);
+
+      const mergeEdge = approvalEdge(graphForLookup, sourcePage.id, targetPage.id, "merge");
+      nextEdges = nextEdges.filter((edge) => edge.id !== mergeEdge.id).concat(mergeEdge);
+      if (op === "supersede") {
+        const supersedesEdge = approvalEdge(graphForLookup, targetPage.id, sourcePage.id, "supersedes");
+        const supersededByEdge = approvalEdge(graphForLookup, sourcePage.id, targetPage.id, "supersededBy");
+        const nextEdgeIds = new Set([supersedesEdge.id, supersededByEdge.id]);
+        nextEdges = nextEdges.filter((edge) => !nextEdgeIds.has(edge.id)).concat(supersedesEdge, supersededByEdge);
+      }
+
+      updateCandidateHistory(compileState, archivedSourcePage, true);
+      updateCandidateHistory(compileState, updatedTargetPage);
+      sessionLines.push(`${op}=${sourcePage.id}->${targetPage.id}`);
+      entry.status = "accepted";
+      continue;
+    }
+
     if (entry.changeType !== "delete") {
       if (!entry.nextPath) {
         throw new Error(`Approval entry ${entry.pageId} is missing a staged path.`);
@@ -4402,6 +4661,7 @@ export async function acceptApproval(rootDir: string, approvalId: string, target
       );
       nextPages.push(nextPage);
       updateCandidateHistory(compileState, nextPage);
+      sessionLines.push(`accepted=${entry.pageId}`);
     } else {
       const deletedPage =
         nextPages.find((page) => page.id === entry.pageId || page.path === entry.previousPath) ??
@@ -4418,6 +4678,7 @@ export async function acceptApproval(rootDir: string, approvalId: string, target
       }
       nextPages = nextPages.filter((page) => page.id !== entry.pageId && page.path !== entry.previousPath);
       updateCandidateHistory(compileState, deletedPage, true);
+      sessionLines.push(`accepted=${entry.pageId}`);
     }
     entry.status = "accepted";
   }
@@ -4425,7 +4686,7 @@ export async function acceptApproval(rootDir: string, approvalId: string, target
   const nextGraph: GraphArtifact = {
     generatedAt: new Date().toISOString(),
     nodes: currentGraph?.nodes ?? bundleGraph?.nodes ?? [],
-    edges: currentGraph?.edges ?? bundleGraph?.edges ?? [],
+    edges: nextEdges,
     hyperedges: currentGraph?.hyperedges ?? bundleGraph?.hyperedges ?? [],
     sources: currentGraph?.sources ?? bundleGraph?.sources ?? [],
     pages: sortGraphPages(nextPages)
@@ -4449,7 +4710,7 @@ export async function acceptApproval(rootDir: string, approvalId: string, target
     changedPages: selectedEntries.flatMap((entry) =>
       [entry.nextPath, entry.previousPath].filter((value): value is string => Boolean(value))
     ),
-    lines: selectedEntries.map((entry) => `accepted=${entry.pageId}`)
+    lines: sessionLines
   });
 
   return {
