@@ -1,0 +1,102 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://swarmvault.ai/pipeline/contracts/04_feature_row.schema.json",
+  "title": "FeatureRow",
+  "description": "One deterministic feature row per (entity, as_of_ts). Persisted as Parquet partitioned by date. The first place numeric quant data leaves SwarmVault's text/graph world.",
+  "type": "object",
+  "required": ["run_id", "entity_id", "entity_type", "event_ts", "as_of_ts", "lexicon", "nlp", "statistical", "graph", "source_ids"],
+  "additionalProperties": false,
+  "properties": {
+    "run_id": { "type": "string" },
+    "entity_id": {
+      "type": "string",
+      "description": "Stable SwarmVault entity ID. Index into wiki/entities/<entity_id>.md."
+    },
+    "entity_type": {
+      "type": "string",
+      "enum": ["ticker", "person", "company", "concept", "theme", "asset_class"]
+    },
+    "event_ts": { "type": "string", "format": "date-time" },
+    "as_of_ts": { "type": "string", "format": "date-time" },
+    "lexicon": {
+      "type": "object",
+      "description": "Loughran-McDonald categories normalized by token count. Per-source-class breakdowns are computed but only the aggregates land in the row.",
+      "required": ["positive", "negative", "uncertainty", "litigious", "constraining", "net"],
+      "additionalProperties": false,
+      "properties": {
+        "positive": { "type": "number" },
+        "negative": { "type": "number" },
+        "uncertainty": { "type": "number" },
+        "litigious": { "type": "number" },
+        "constraining": { "type": "number" },
+        "superfluous": { "type": "number" },
+        "net": { "type": "number", "description": "(positive - negative) / (positive + negative + epsilon)" },
+        "dictionary_version": { "type": "string" }
+      }
+    },
+    "nlp": {
+      "type": "object",
+      "description": "Rule-based NLP / entity features.",
+      "required": ["mention_count", "key_figure_mentions", "phd_term_count"],
+      "additionalProperties": false,
+      "properties": {
+        "mention_count": { "type": "integer", "minimum": 0 },
+        "key_figure_mentions": {
+          "type": "integer",
+          "minimum": 0,
+          "description": "Mentions of curated key-figures list (configured in pipeline.yml)."
+        },
+        "phd_term_count": { "type": "integer", "minimum": 0, "description": "Hits against the curated PhD-terms vocabulary." },
+        "ner_agreement": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 1,
+          "description": "Fraction of entities where spaCy and Stanza agree."
+        },
+        "credibility_weighted_mention_count": { "type": "number", "minimum": 0 }
+      }
+    },
+    "statistical": {
+      "type": "object",
+      "description": "scikit-learn + tsfresh outputs. The 'features' object is a sparse map; columns surfaced here are stable across runs.",
+      "required": ["tfidf_norm", "ngram_novelty", "recency_decay"],
+      "additionalProperties": true,
+      "properties": {
+        "tfidf_norm": { "type": "number" },
+        "ngram_novelty": { "type": "number", "description": "Fraction of n-grams not seen in last N days." },
+        "recency_decay": { "type": "number", "minimum": 0, "maximum": 1 },
+        "tsfresh_feature_count": { "type": "integer", "minimum": 0 },
+        "tsfresh_feature_set_hash": {
+          "type": "string",
+          "description": "SHA256 of the selected tsfresh feature names; needed for backtest reproducibility."
+        }
+      }
+    },
+    "graph": {
+      "type": "object",
+      "description": "NetworkX/igraph features computed against state/graph.json at as_of_ts.",
+      "required": ["degree", "pagerank", "betweenness"],
+      "additionalProperties": false,
+      "properties": {
+        "degree": { "type": "integer", "minimum": 0 },
+        "in_degree": { "type": "integer", "minimum": 0 },
+        "out_degree": { "type": "integer", "minimum": 0 },
+        "pagerank": { "type": "number", "minimum": 0 },
+        "betweenness": { "type": "number", "minimum": 0 },
+        "community_id": { "type": "string" },
+        "first_party_neighbor_count": { "type": "integer", "minimum": 0 },
+        "resource_neighbor_count": { "type": "integer", "minimum": 0 }
+      }
+    },
+    "source_ids": {
+      "type": "array",
+      "description": "Every capture record that contributed to this feature row. Walks back to raw/.",
+      "minItems": 1,
+      "items": { "type": "string", "pattern": "^[a-f0-9]{16}$" }
+    },
+    "wiki_page_path": {
+      "type": "string",
+      "description": "wiki/entities/<entity_id>.md — convenience link for human auditors."
+    }
+  }
+}

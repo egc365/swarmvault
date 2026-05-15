@@ -1,0 +1,99 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://swarmvault.ai/pipeline/contracts/02_normalized_doc.schema.json",
+  "title": "NormalizedDocument",
+  "description": "Output of Stage 2 (compiler). One per source after Docling/MinerU/WhisperX normalization. Consumed by SwarmVault ingest in Stage 3.",
+  "type": "object",
+  "required": [
+    "source_id",
+    "doc_path",
+    "compiler",
+    "compiler_version",
+    "compiler_confidence",
+    "as_of_ts",
+    "frontmatter",
+    "extraction_summary"
+  ],
+  "additionalProperties": false,
+  "properties": {
+    "source_id": {
+      "type": "string",
+      "pattern": "^[a-f0-9]{16}$",
+      "description": "Matches the CaptureRecord.source_id this document was compiled from."
+    },
+    "doc_path": {
+      "type": "string",
+      "description": "Filesystem path to the normalized markdown, e.g. raw/papers/<source_id>.md"
+    },
+    "compiler": {
+      "type": "string",
+      "enum": ["docling", "mineru", "pymupdf4llm", "whisperx", "passthrough_markdown"]
+    },
+    "compiler_version": {
+      "type": "string",
+      "description": "Semver of the compiler. Pinned in pyproject.toml and tracked in DVC."
+    },
+    "compiler_confidence": {
+      "type": "number",
+      "minimum": 0,
+      "maximum": 1,
+      "description": "Compiler's self-reported confidence (e.g. Docling table confidence). Used to pick between Docling and MinerU when both ran."
+    },
+    "fallback_used": {
+      "type": "boolean",
+      "default": false,
+      "description": "True when Docling was tried but MinerU produced the kept output."
+    },
+    "as_of_ts": {
+      "type": "string",
+      "format": "date-time",
+      "description": "When the document was normalized. >= CaptureRecord.as_of_ts."
+    },
+    "frontmatter": {
+      "type": "object",
+      "description": "YAML frontmatter that SwarmVault ingest will read. Schema mirrors SwarmVault's source page conventions.",
+      "required": ["title", "source_type", "source_class", "event_ts"],
+      "additionalProperties": true,
+      "properties": {
+        "title": { "type": "string" },
+        "source_type": { "type": "string" },
+        "source_class": { "type": "string", "enum": ["first_party", "third_party", "resource", "generated"] },
+        "event_ts": { "type": "string", "format": "date-time" },
+        "author": { "type": "string" },
+        "uri": { "type": "string", "format": "uri" },
+        "tags": { "type": "array", "items": { "type": "string" } }
+      }
+    },
+    "extraction_summary": {
+      "type": "object",
+      "description": "Counts emitted by the compiler. Useful for downstream filtering and audit.",
+      "required": ["char_count", "paragraph_count"],
+      "additionalProperties": false,
+      "properties": {
+        "char_count": { "type": "integer", "minimum": 0 },
+        "paragraph_count": { "type": "integer", "minimum": 0 },
+        "table_count": { "type": "integer", "minimum": 0 },
+        "figure_count": { "type": "integer", "minimum": 0 },
+        "equation_count": { "type": "integer", "minimum": 0 },
+        "footnote_count": { "type": "integer", "minimum": 0 },
+        "speaker_turn_count": { "type": "integer", "minimum": 0 }
+      }
+    },
+    "tables": {
+      "type": "array",
+      "description": "Structured table extractions (preserved as JSON alongside the markdown).",
+      "items": {
+        "type": "object",
+        "required": ["table_id", "rows", "cols", "json_path"],
+        "additionalProperties": false,
+        "properties": {
+          "table_id": { "type": "string" },
+          "rows": { "type": "integer", "minimum": 0 },
+          "cols": { "type": "integer", "minimum": 0 },
+          "json_path": { "type": "string", "description": "Path to per-table JSON (cells + headers)." },
+          "confidence": { "type": "number", "minimum": 0, "maximum": 1 }
+        }
+      }
+    }
+  }
+}

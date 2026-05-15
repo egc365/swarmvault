@@ -1,0 +1,88 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://swarmvault.ai/pipeline/contracts/08_order.schema.json",
+  "title": "Order",
+  "description": "Orders sent to a broker (paper or live) and their fill events. Stage 7 output. Paper and live are stored in separate partitions; the manifest enforces non-mixing.",
+  "type": "object",
+  "required": ["run_id", "order_id", "mode", "broker", "instrument", "submit_ts", "side", "qty", "order_type", "status", "weight_id"],
+  "additionalProperties": false,
+  "properties": {
+    "run_id": { "type": "string" },
+    "order_id": {
+      "type": "string",
+      "description": "Engine-side order ID. Stable across submit/fill/cancel."
+    },
+    "broker_order_id": {
+      "type": "string",
+      "description": "Broker-assigned ID, when known."
+    },
+    "mode": {
+      "type": "string",
+      "enum": ["paper", "live"],
+      "description": "MUST match config/pipeline.yml execution.mode. Live requires per-run authorization."
+    },
+    "broker": {
+      "type": "string",
+      "enum": ["ib", "alpaca", "ccxt:binance", "ccxt:coinbase", "ccxt:kraken", "fix", "internal_paper"]
+    },
+    "instrument": {
+      "type": "object",
+      "required": ["symbol", "asset_class"],
+      "additionalProperties": false,
+      "properties": {
+        "symbol": { "type": "string" },
+        "exchange": { "type": "string" },
+        "asset_class": { "type": "string" }
+      }
+    },
+    "submit_ts": { "type": "string", "format": "date-time" },
+    "side": { "type": "string", "enum": ["buy", "sell"] },
+    "qty": { "type": "number", "exclusiveMinimum": 0 },
+    "order_type": { "type": "string", "enum": ["market", "limit", "stop", "stop_limit", "moc", "loc"] },
+    "limit_price": { "type": "number" },
+    "stop_price": { "type": "number" },
+    "tif": { "type": "string", "enum": ["day", "gtc", "ioc", "fok"] },
+    "status": {
+      "type": "string",
+      "enum": ["pending", "submitted", "partial", "filled", "cancelled", "rejected", "expired"]
+    },
+    "fill": {
+      "type": "object",
+      "description": "Present when status in {partial, filled}.",
+      "additionalProperties": false,
+      "properties": {
+        "filled_qty": { "type": "number", "minimum": 0 },
+        "avg_price": { "type": "number" },
+        "fill_ts": { "type": "string", "format": "date-time" },
+        "fees": { "type": "number", "minimum": 0 },
+        "slippage_bps": { "type": "number" }
+      }
+    },
+    "weight_id": {
+      "type": "string",
+      "description": "TargetWeight ID this order is delta-rebalancing toward."
+    },
+    "pre_trade_check": {
+      "type": "object",
+      "description": "Result of the pre-trade risk gate.",
+      "required": ["passed"],
+      "additionalProperties": false,
+      "properties": {
+        "passed": { "type": "boolean" },
+        "rules": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": ["rule", "passed"],
+            "additionalProperties": false,
+            "properties": {
+              "rule": { "type": "string" },
+              "passed": { "type": "boolean" },
+              "detail": { "type": "string" }
+            }
+          }
+        }
+      }
+    }
+  }
+}

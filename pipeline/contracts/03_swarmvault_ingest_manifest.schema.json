@@ -1,0 +1,108 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://swarmvault.ai/pipeline/contracts/03_swarmvault_ingest_manifest.schema.json",
+  "title": "SwarmVaultIngestManifest",
+  "description": "What SwarmVault ingest + compile produced for a given batch of normalized documents. Stage 3 emits this; Stage 4 reads it to know which graph nodes to score this run.",
+  "type": "object",
+  "required": [
+    "run_id",
+    "as_of_ts",
+    "vault_root",
+    "swarmvault_version",
+    "graph_path",
+    "graph_hash",
+    "ingested_sources",
+    "wiki_writes",
+    "graph_writes"
+  ],
+  "additionalProperties": false,
+  "properties": {
+    "run_id": {
+      "type": "string",
+      "description": "Run ID tying all artifacts together. UUIDv7."
+    },
+    "as_of_ts": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "vault_root": {
+      "type": "string",
+      "description": "Absolute or repo-relative path to the SwarmVault vault root."
+    },
+    "swarmvault_version": {
+      "type": "string",
+      "description": "@swarmvaultai/cli version that produced this manifest."
+    },
+    "graph_path": {
+      "type": "string",
+      "description": "Path to state/graph.json that this run wrote."
+    },
+    "graph_hash": {
+      "type": "string",
+      "pattern": "^sha256:[a-f0-9]{64}$",
+      "description": "Stable hash of the graph artifact for downstream cache invalidation."
+    },
+    "ingested_sources": {
+      "type": "array",
+      "description": "References back to Stage 2 NormalizedDocument outputs.",
+      "items": {
+        "type": "object",
+        "required": ["source_id", "doc_path"],
+        "additionalProperties": false,
+        "properties": {
+          "source_id": { "type": "string", "pattern": "^[a-f0-9]{16}$" },
+          "doc_path": { "type": "string" },
+          "outcome": { "type": "string", "enum": ["ingested", "candidate", "skipped_duplicate", "skipped_low_quality"] }
+        }
+      }
+    },
+    "wiki_writes": {
+      "type": "object",
+      "description": "Counts of wiki/* pages created or updated this run.",
+      "additionalProperties": false,
+      "properties": {
+        "sources_created": { "type": "integer", "minimum": 0 },
+        "sources_updated": { "type": "integer", "minimum": 0 },
+        "entities_created": { "type": "integer", "minimum": 0 },
+        "entities_updated": { "type": "integer", "minimum": 0 },
+        "claims_added": { "type": "integer", "minimum": 0 },
+        "candidates_added": { "type": "integer", "minimum": 0 }
+      }
+    },
+    "graph_writes": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "nodes_added": { "type": "integer", "minimum": 0 },
+        "edges_added": { "type": "integer", "minimum": 0 },
+        "edges_extracted": { "type": "integer", "minimum": 0 },
+        "edges_inferred": { "type": "integer", "minimum": 0 },
+        "edges_ambiguous": { "type": "integer", "minimum": 0 },
+        "contradictions_detected": { "type": "integer", "minimum": 0 }
+      }
+    },
+    "neo4j_push": {
+      "type": "object",
+      "description": "Present when graph-push to Neo4j ran for this manifest.",
+      "additionalProperties": false,
+      "properties": {
+        "pushed": { "type": "boolean" },
+        "database": { "type": "string" },
+        "vault_id": { "type": "string" },
+        "nodes_pushed": { "type": "integer", "minimum": 0 },
+        "edges_pushed": { "type": "integer", "minimum": 0 }
+      }
+    },
+    "qdrant_sync": {
+      "type": "object",
+      "description": "Present when feature-row vectors were upserted to Qdrant.",
+      "additionalProperties": false,
+      "properties": {
+        "collection": { "type": "string" },
+        "points_upserted": { "type": "integer", "minimum": 0 },
+        "embedding_model": { "type": "string" },
+        "embedding_dim": { "type": "integer", "minimum": 1 }
+      }
+    }
+  }
+}
