@@ -20,7 +20,17 @@
     "run_id": { "type": "string" },
     "model": {
       "type": "string",
-      "enum": ["riskfolio_hrp", "riskfolio_herc", "riskfolio_cvar", "riskfolio_evar", "riskfolio_mv", "pyportfolio_bl", "pyportfolio_mv", "skfolio_pipeline", "cvxpy_custom"]
+      "enum": [
+        "riskfolio_hrp",
+        "riskfolio_herc",
+        "riskfolio_cvar",
+        "riskfolio_evar",
+        "riskfolio_mv",
+        "pyportfolio_bl",
+        "pyportfolio_mv",
+        "skfolio_pipeline",
+        "cvxpy_custom"
+      ]
     },
     "model_version": { "type": "string" },
     "instrument": {

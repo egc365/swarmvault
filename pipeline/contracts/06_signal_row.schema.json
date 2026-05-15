@@ -4,17 +4,7 @@
   "title": "SignalRow",
   "description": "Backtester output: a single signal at a single timestamp for a single instrument, with factor attribution. Produced by NautilusTrader (live parity) or vectorbt (sweeps). Filtered upstream by Alphalens.",
   "type": "object",
-  "required": [
-    "run_id",
-    "strategy_id",
-    "engine",
-    "instrument",
-    "event_ts",
-    "as_of_ts",
-    "signal",
-    "factor_attribution",
-    "conviction_ids"
-  ],
+  "required": ["run_id", "strategy_id", "engine", "instrument", "event_ts", "as_of_ts", "signal", "factor_attribution", "conviction_ids"],
   "additionalProperties": false,
   "properties": {
     "run_id": { "type": "string" },
@@ -37,14 +27,23 @@
       }
     },
     "event_ts": { "type": "string", "format": "date-time", "description": "Bar/event timestamp the signal pertains to." },
-    "as_of_ts": { "type": "string", "format": "date-time", "description": "When the signal was decidable. MUST be <= event_ts to be backtest-legal." },
+    "as_of_ts": {
+      "type": "string",
+      "format": "date-time",
+      "description": "When the signal was decidable. MUST be <= event_ts to be backtest-legal."
+    },
     "signal": {
       "type": "object",
       "required": ["direction", "strength"],
       "additionalProperties": false,
       "properties": {
         "direction": { "type": "string", "enum": ["long", "short", "flat", "exit"] },
-        "strength": { "type": "number", "minimum": -1, "maximum": 1, "description": "Signed conviction post-scaling. -1 = max short, +1 = max long." },
+        "strength": {
+          "type": "number",
+          "minimum": -1,
+          "maximum": 1,
+          "description": "Signed conviction post-scaling. -1 = max short, +1 = max long."
+        },
         "horizon_bars": { "type": "integer", "minimum": 1 },
         "stop_loss": { "type": "number" },
         "take_profit": { "type": "number" }

@@ -4,18 +4,7 @@
   "title": "FeatureRow",
   "description": "One deterministic feature row per (entity, as_of_ts). Persisted as Parquet partitioned by date. The first place numeric quant data leaves SwarmVault's text/graph world.",
   "type": "object",
-  "required": [
-    "run_id",
-    "entity_id",
-    "entity_type",
-    "event_ts",
-    "as_of_ts",
-    "lexicon",
-    "nlp",
-    "statistical",
-    "graph",
-    "source_ids"
-  ],
+  "required": ["run_id", "entity_id", "entity_type", "event_ts", "as_of_ts", "lexicon", "nlp", "statistical", "graph", "source_ids"],
   "additionalProperties": false,
   "properties": {
     "run_id": { "type": "string" },
@@ -52,9 +41,18 @@
       "additionalProperties": false,
       "properties": {
         "mention_count": { "type": "integer", "minimum": 0 },
-        "key_figure_mentions": { "type": "integer", "minimum": 0, "description": "Mentions of curated key-figures list (configured in pipeline.yml)." },
+        "key_figure_mentions": {
+          "type": "integer",
+          "minimum": 0,
+          "description": "Mentions of curated key-figures list (configured in pipeline.yml)."
+        },
         "phd_term_count": { "type": "integer", "minimum": 0, "description": "Hits against the curated PhD-terms vocabulary." },
-        "ner_agreement": { "type": "number", "minimum": 0, "maximum": 1, "description": "Fraction of entities where spaCy and Stanza agree." },
+        "ner_agreement": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 1,
+          "description": "Fraction of entities where spaCy and Stanza agree."
+        },
         "credibility_weighted_mention_count": { "type": "number", "minimum": 0 }
       }
     },
@@ -68,7 +66,10 @@
         "ngram_novelty": { "type": "number", "description": "Fraction of n-grams not seen in last N days." },
         "recency_decay": { "type": "number", "minimum": 0, "maximum": 1 },
         "tsfresh_feature_count": { "type": "integer", "minimum": 0 },
-        "tsfresh_feature_set_hash": { "type": "string", "description": "SHA256 of the selected tsfresh feature names; needed for backtest reproducibility." }
+        "tsfresh_feature_set_hash": {
+          "type": "string",
+          "description": "SHA256 of the selected tsfresh feature names; needed for backtest reproducibility."
+        }
       }
     },
     "graph": {

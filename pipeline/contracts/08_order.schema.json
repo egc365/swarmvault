@@ -4,19 +4,7 @@
   "title": "Order",
   "description": "Orders sent to a broker (paper or live) and their fill events. Stage 7 output. Paper and live are stored in separate partitions; the manifest enforces non-mixing.",
   "type": "object",
-  "required": [
-    "run_id",
-    "order_id",
-    "mode",
-    "broker",
-    "instrument",
-    "submit_ts",
-    "side",
-    "qty",
-    "order_type",
-    "status",
-    "weight_id"
-  ],
+  "required": ["run_id", "order_id", "mode", "broker", "instrument", "submit_ts", "side", "qty", "order_type", "status", "weight_id"],
   "additionalProperties": false,
   "properties": {
     "run_id": { "type": "string" },

@@ -4,17 +4,7 @@
   "title": "RunManifest",
   "description": "The audit envelope. Stage 9 writes one of these per run_id. It is the single document a regulator (or you, six months later) walks to reconstruct exactly what happened, with what data, using which code, producing which orders.",
   "type": "object",
-  "required": [
-    "run_id",
-    "started_ts",
-    "finished_ts",
-    "status",
-    "git_commit",
-    "config_hash",
-    "stages",
-    "validation_results",
-    "lineage"
-  ],
+  "required": ["run_id", "started_ts", "finished_ts", "status", "git_commit", "config_hash", "stages", "validation_results", "lineage"],
   "additionalProperties": false,
   "properties": {
     "run_id": { "type": "string", "description": "UUIDv7. Sortable, globally unique." },

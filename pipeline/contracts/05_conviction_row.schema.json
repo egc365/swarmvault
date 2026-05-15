@@ -4,14 +4,7 @@
   "title": "ConvictionRow",
   "description": "Conviction scores computed from a FeatureRow. Three framings + ensemble are emitted in parallel; downstream picks per-regime.",
   "type": "object",
-  "required": [
-    "run_id",
-    "entity_id",
-    "as_of_ts",
-    "feature_row_uri",
-    "framings",
-    "ensemble"
-  ],
+  "required": ["run_id", "entity_id", "as_of_ts", "feature_row_uri", "framings", "ensemble"],
   "additionalProperties": false,
   "properties": {
     "run_id": { "type": "string" },
