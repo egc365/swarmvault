@@ -1,0 +1,96 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://swarmvault.ai/pipeline/contracts/01_capture_record.schema.json",
+  "title": "CaptureRecord",
+  "description": "One raw item from the multi-source scrubber or transcriber. Written by Stage 1, consumed by Stage 2.",
+  "type": "object",
+  "required": [
+    "source_id",
+    "source_type",
+    "event_ts",
+    "as_of_ts",
+    "ingestion_run_id",
+    "uri",
+    "raw_path",
+    "content_hash"
+  ],
+  "additionalProperties": false,
+  "properties": {
+    "source_id": {
+      "type": "string",
+      "description": "Stable, deduplicated identifier. SHA256 of (canonical_uri || normalized_first_kb) truncated to 16 hex chars.",
+      "pattern": "^[a-f0-9]{16}$"
+    },
+    "source_type": {
+      "type": "string",
+      "enum": ["x_post", "rss_item", "news_article", "podcast_audio", "youtube_video", "interview_transcript", "paper_pdf", "book_pdf", "sec_filing", "user_note"]
+    },
+    "source_class": {
+      "type": "string",
+      "enum": ["first_party", "third_party", "resource", "generated"],
+      "default": "third_party",
+      "description": "Matches SwarmVault's SourceClass."
+    },
+    "event_ts": {
+      "type": "string",
+      "format": "date-time",
+      "description": "When the event happened in the wild. UTC, ISO 8601."
+    },
+    "as_of_ts": {
+      "type": "string",
+      "format": "date-time",
+      "description": "When this pipeline first had the data available. UTC, ISO 8601. Stage 5 must filter `as_of_ts <= simulated_now`."
+    },
+    "ingestion_run_id": {
+      "type": "string",
+      "description": "Run ID that captured this. UUIDv7 preferred for sortable provenance.",
+      "minLength": 1
+    },
+    "uri": {
+      "type": "string",
+      "format": "uri",
+      "description": "Canonical URL or URN of the source."
+    },
+    "raw_path": {
+      "type": "string",
+      "description": "Filesystem path relative to repo root where the raw bytes live, e.g. raw/x/<source_id>.md"
+    },
+    "content_hash": {
+      "type": "string",
+      "pattern": "^sha256:[a-f0-9]{64}$",
+      "description": "SHA256 of the canonical raw bytes for dedup and tamper-detect."
+    },
+    "language": {
+      "type": "string",
+      "description": "BCP-47 language tag of the dominant content."
+    },
+    "author": {
+      "type": "string",
+      "description": "Author handle or name when identifiable."
+    },
+    "credibility_tier": {
+      "type": "integer",
+      "minimum": 0,
+      "maximum": 5,
+      "description": "0 = unknown, 5 = top tier (peer-reviewed paper, named CEO statement). Source of the credibility multiplier in Stage 4."
+    },
+    "transcription": {
+      "type": "object",
+      "description": "Present when source_type is audio/video.",
+      "additionalProperties": false,
+      "properties": {
+        "engine": { "type": "string", "enum": ["whisperx", "faster-whisper", "whisper.cpp", "vosk"] },
+        "model": { "type": "string" },
+        "diarization": { "type": "boolean" },
+        "word_level_timestamps": { "type": "boolean" },
+        "speaker_count": { "type": "integer", "minimum": 1 },
+        "duration_seconds": { "type": "number", "minimum": 0 }
+      }
+    },
+    "fetch_metadata": {
+      "type": "object",
+      "additionalProperties": true,
+      "description": "Free-form metadata from the fetcher (HTTP status, retry count, scraper version, etc.)."
+    }
+  }
+}

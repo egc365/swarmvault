@@ -1,0 +1,127 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://swarmvault.ai/pipeline/contracts/99_run_manifest.schema.json",
+  "title": "RunManifest",
+  "description": "The audit envelope. Stage 9 writes one of these per run_id. It is the single document a regulator (or you, six months later) walks to reconstruct exactly what happened, with what data, using which code, producing which orders.",
+  "type": "object",
+  "required": [
+    "run_id",
+    "started_ts",
+    "finished_ts",
+    "status",
+    "git_commit",
+    "config_hash",
+    "stages",
+    "validation_results",
+    "lineage"
+  ],
+  "additionalProperties": false,
+  "properties": {
+    "run_id": { "type": "string", "description": "UUIDv7. Sortable, globally unique." },
+    "started_ts": { "type": "string", "format": "date-time" },
+    "finished_ts": { "type": "string", "format": "date-time" },
+    "status": { "type": "string", "enum": ["success", "partial", "failed"] },
+    "git_commit": {
+      "type": "string",
+      "pattern": "^[a-f0-9]{40}$",
+      "description": "Pipeline repo commit SHA at run time."
+    },
+    "swarmvault_commit": {
+      "type": "string",
+      "description": "SwarmVault version hash. May equal git_commit when the pipeline lives in this repo."
+    },
+    "config_hash": {
+      "type": "string",
+      "pattern": "^sha256:[a-f0-9]{64}$",
+      "description": "Hash of resolved pipeline.yml + conviction.yml at run start."
+    },
+    "execution_mode": {
+      "type": "string",
+      "enum": ["paper", "live"],
+      "description": "If live, `live_authorization` must be present."
+    },
+    "live_authorization": {
+      "type": "object",
+      "description": "Required when execution_mode = live.",
+      "additionalProperties": false,
+      "properties": {
+        "authorized_by": { "type": "string" },
+        "authorized_ts": { "type": "string", "format": "date-time" },
+        "ticket": { "type": "string" }
+      }
+    },
+    "stages": {
+      "type": "object",
+      "description": "Per-stage timing + artifact pointers.",
+      "additionalProperties": false,
+      "properties": {
+        "capture": { "$ref": "#/$defs/stageRun" },
+        "compile": { "$ref": "#/$defs/stageRun" },
+        "knowledge_core": { "$ref": "#/$defs/stageRun" },
+        "features": { "$ref": "#/$defs/stageRun" },
+        "signals": { "$ref": "#/$defs/stageRun" },
+        "portfolio": { "$ref": "#/$defs/stageRun" },
+        "execution": { "$ref": "#/$defs/stageRun" },
+        "audit": { "$ref": "#/$defs/stageRun" }
+      }
+    },
+    "validation_results": {
+      "type": "array",
+      "description": "Pandera validation outcomes at every stage boundary.",
+      "items": {
+        "type": "object",
+        "required": ["stage", "contract", "passed"],
+        "additionalProperties": false,
+        "properties": {
+          "stage": { "type": "string" },
+          "contract": { "type": "string" },
+          "rows_checked": { "type": "integer", "minimum": 0 },
+          "passed": { "type": "boolean" },
+          "violations": {
+            "type": "array",
+            "items": { "type": "object", "additionalProperties": true }
+          }
+        }
+      }
+    },
+    "lineage": {
+      "type": "object",
+      "description": "External system pointers — the chain a regulator follows.",
+      "additionalProperties": false,
+      "properties": {
+        "mlflow_run_id": { "type": "string" },
+        "dvc_artifacts": { "type": "array", "items": { "type": "string" }, "description": "DVC-tracked paths pinned to this run." },
+        "lakefs_ref": { "type": "string", "description": "lakeFS branch or commit ref the run read from." },
+        "dagster_run_id": { "type": "string" }
+      }
+    },
+    "feedback_loop": {
+      "type": "object",
+      "description": "What this run learned from the previous run(s).",
+      "additionalProperties": false,
+      "properties": {
+        "prior_run_id": { "type": "string" },
+        "conviction_weights_updated": { "type": "boolean" },
+        "feature_selection_updated": { "type": "boolean" },
+        "cost_model_recalibrated": { "type": "boolean" },
+        "kill_switch_tripped": { "type": "boolean" }
+      }
+    }
+  },
+  "$defs": {
+    "stageRun": {
+      "type": "object",
+      "required": ["started_ts", "finished_ts", "status"],
+      "additionalProperties": false,
+      "properties": {
+        "started_ts": { "type": "string", "format": "date-time" },
+        "finished_ts": { "type": "string", "format": "date-time" },
+        "status": { "type": "string", "enum": ["success", "skipped", "failed"] },
+        "artifact_paths": { "type": "array", "items": { "type": "string" } },
+        "rows_in": { "type": "integer", "minimum": 0 },
+        "rows_out": { "type": "integer", "minimum": 0 },
+        "log_path": { "type": "string" }
+      }
+    }
+  }
+}

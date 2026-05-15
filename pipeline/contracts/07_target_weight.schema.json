@@ -1,0 +1,79 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://swarmvault.ai/pipeline/contracts/07_target_weight.schema.json",
+  "title": "TargetWeight",
+  "description": "Portfolio-construction output. Riskfolio-Lib primary, PyPortfolioOpt cross-check. One row per (instrument, as_of_ts, model). Multiple models can coexist in a single run; the chosen one is flagged.",
+  "type": "object",
+  "required": [
+    "run_id",
+    "model",
+    "model_version",
+    "instrument",
+    "as_of_ts",
+    "target_weight",
+    "constraints_applied",
+    "signal_ids",
+    "is_chosen"
+  ],
+  "additionalProperties": false,
+  "properties": {
+    "run_id": { "type": "string" },
+    "model": {
+      "type": "string",
+      "enum": ["riskfolio_hrp", "riskfolio_herc", "riskfolio_cvar", "riskfolio_evar", "riskfolio_mv", "pyportfolio_bl", "pyportfolio_mv", "skfolio_pipeline", "cvxpy_custom"]
+    },
+    "model_version": { "type": "string" },
+    "instrument": {
+      "type": "object",
+      "required": ["symbol", "asset_class"],
+      "additionalProperties": false,
+      "properties": {
+        "symbol": { "type": "string" },
+        "asset_class": { "type": "string" }
+      }
+    },
+    "as_of_ts": { "type": "string", "format": "date-time" },
+    "target_weight": {
+      "type": "number",
+      "minimum": -1,
+      "maximum": 1,
+      "description": "Fraction of portfolio. Negative = short. Subject to constraints below."
+    },
+    "constraints_applied": {
+      "type": "object",
+      "description": "Constraints in force at solve time. Used by ex-post audit to detect drift.",
+      "additionalProperties": false,
+      "properties": {
+        "max_position": { "type": "number" },
+        "min_position": { "type": "number" },
+        "max_sector_exposure": { "type": "number" },
+        "max_gross_leverage": { "type": "number" },
+        "max_net_leverage": { "type": "number" },
+        "long_only": { "type": "boolean" }
+      }
+    },
+    "risk_measures": {
+      "type": "object",
+      "description": "Ex-ante risk decomposition from the optimizer (Riskfolio reports many of these natively).",
+      "additionalProperties": false,
+      "properties": {
+        "expected_return": { "type": "number" },
+        "volatility": { "type": "number" },
+        "cvar_95": { "type": "number" },
+        "evar_95": { "type": "number" },
+        "max_drawdown": { "type": "number" },
+        "sharpe": { "type": "number" }
+      }
+    },
+    "signal_ids": {
+      "type": "array",
+      "minItems": 1,
+      "items": { "type": "string" },
+      "description": "SignalRow IDs that drove this weight."
+    },
+    "is_chosen": {
+      "type": "boolean",
+      "description": "True for the single model whose weights are passed to Stage 7 execution. The others are kept for ex-post comparison."
+    }
+  }
+}

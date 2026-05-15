@@ -1,0 +1,105 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://swarmvault.ai/pipeline/contracts/05_conviction_row.schema.json",
+  "title": "ConvictionRow",
+  "description": "Conviction scores computed from a FeatureRow. Three framings + ensemble are emitted in parallel; downstream picks per-regime.",
+  "type": "object",
+  "required": [
+    "run_id",
+    "entity_id",
+    "as_of_ts",
+    "feature_row_uri",
+    "framings",
+    "ensemble"
+  ],
+  "additionalProperties": false,
+  "properties": {
+    "run_id": { "type": "string" },
+    "entity_id": { "type": "string" },
+    "as_of_ts": { "type": "string", "format": "date-time" },
+    "feature_row_uri": {
+      "type": "string",
+      "description": "Pointer into the Parquet feature-row store. e.g. parquet:pipeline_data/features/dt=2026-05-15/run=<run_id>#row=<row_id>"
+    },
+    "framings": {
+      "type": "object",
+      "description": "Three independent interpretations of the same features. Component contributions are stored so the score is fully auditable.",
+      "required": ["zscore_weighted_sum", "multiplicative", "logodds"],
+      "additionalProperties": false,
+      "properties": {
+        "zscore_weighted_sum": {
+          "type": "object",
+          "required": ["score", "components", "weights_version"],
+          "additionalProperties": false,
+          "properties": {
+            "score": { "type": "number" },
+            "components": {
+              "type": "object",
+              "additionalProperties": { "type": "number" },
+              "description": "Map of component_name → z-scored value (e.g. lexicon_net, credibility, pagerank, recency, phd_alignment)."
+            },
+            "rolling_window_days": { "type": "integer", "minimum": 1 },
+            "weights_version": { "type": "string" }
+          }
+        },
+        "multiplicative": {
+          "type": "object",
+          "required": ["score", "components", "weights_version"],
+          "additionalProperties": false,
+          "properties": {
+            "score": { "type": "number", "minimum": 0 },
+            "components": {
+              "type": "object",
+              "additionalProperties": { "type": "number" }
+            },
+            "weights_version": { "type": "string" }
+          }
+        },
+        "logodds": {
+          "type": "object",
+          "required": ["score", "components", "weights_version"],
+          "additionalProperties": false,
+          "properties": {
+            "score": { "type": "number", "minimum": 0, "maximum": 1, "description": "Sigmoid(sum of weighted logits)." },
+            "components": {
+              "type": "object",
+              "additionalProperties": { "type": "number" }
+            },
+            "weights_version": { "type": "string" }
+          }
+        }
+      }
+    },
+    "ensemble": {
+      "type": "object",
+      "description": "Default downstream score. Rank-average of the three framings unless overridden in config/conviction.yml.",
+      "required": ["score", "method"],
+      "additionalProperties": false,
+      "properties": {
+        "score": { "type": "number", "minimum": 0, "maximum": 1 },
+        "method": { "type": "string", "enum": ["rank_average", "median", "weighted_average", "regime_selected"] },
+        "regime_label": {
+          "type": "string",
+          "description": "When method=regime_selected, which framing was picked and why."
+        }
+      }
+    },
+    "calibration": {
+      "type": "object",
+      "description": "Latest realized-PnL calibration metrics for each framing (filled by Stage 9 feedback loop).",
+      "additionalProperties": false,
+      "properties": {
+        "ic_zscore": { "type": "number" },
+        "ic_multiplicative": { "type": "number" },
+        "ic_logodds": { "type": "number" },
+        "calibration_window_days": { "type": "integer", "minimum": 1 },
+        "calibration_run_id": { "type": "string" }
+      }
+    },
+    "source_ids": {
+      "type": "array",
+      "minItems": 1,
+      "items": { "type": "string", "pattern": "^[a-f0-9]{16}$" }
+    }
+  }
+}
