@@ -1,6 +1,12 @@
 import cytoscape, { type LayoutOptions } from "cytoscape";
+import fcose from "cytoscape-fcose";
 import { useEffect, useEffectEvent, useRef, useState } from "react";
 import { GraphLegend } from "./GraphLegend";
+
+// Register fcose once at module load. Replaces the default `cose` layout
+// (single-threaded, O(n^2), hangs the page above ~3-4k nodes) with the
+// fast compound spring embedder which is ~10x faster on large graphs.
+cytoscape.use(fcose);
 import { GraphMinimap } from "./GraphMinimap";
 import type { Core, ViewerGraphArtifact, ViewerGraphNode, ViewerGraphPathResult } from "./types";
 
@@ -132,7 +138,7 @@ const COLORS: Record<string, string> = {
 export type LayoutName = "cose" | "concentric" | "circle" | "breadthfirst" | "grid";
 
 const LAYOUT_LABELS: Record<LayoutName, string> = {
-  cose: "Force (cose)",
+  cose: "Force (fcose)",
   concentric: "Concentric",
   circle: "Circle",
   breadthfirst: "Hierarchy",
@@ -141,11 +147,13 @@ const LAYOUT_LABELS: Record<LayoutName, string> = {
 
 const LAYOUT_OPTIONS: Record<LayoutName, LayoutOptions> = {
   cose: {
-    name: "cose",
+    name: "fcose",
+    quality: "default",
     animate: false,
+    randomize: true,
     idealEdgeLength: 280,
     nodeRepulsion: 120_000,
-    nodeOverlap: 60,
+    nodeSeparation: 60,
     gravity: 0.08,
     nestingFactor: 1.2,
     edgeElasticity: 100,

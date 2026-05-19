@@ -1,6 +1,10 @@
 import type { GraphArtifact, GraphHyperedge, GraphNode, GraphReportArtifact } from "./types.js";
 
-const OVERVIEW_THRESHOLD = 5_000;
+// Threshold lowered from 5000 → 1500 because real-world vaults at the 3-5k node
+// range still hang the client-side force-directed layout (single-threaded JS,
+// O(n^2) repulsion). Budget kept at 1500 — fcose renders ~1500 nodes in 1-2s.
+// Use `swarmvault graph serve --full` to bypass sampling when needed.
+const OVERVIEW_THRESHOLD = 1_500;
 const OVERVIEW_NODE_BUDGET = 1_500;
 
 export interface ViewerGraphPresentation {
